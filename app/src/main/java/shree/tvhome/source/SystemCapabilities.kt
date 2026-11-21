@@ -29,6 +29,17 @@ object SystemCapabilities {
         val id: Int
     )
 
+    private val audioTypeLabels = mapOf(
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP to "Bluetooth Audio",
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO to "Bluetooth Audio",
+        AudioDeviceInfo.TYPE_HDMI to "HDMI Audio",
+        AudioDeviceInfo.TYPE_HDMI_ARC to "HDMI Audio",
+        AudioDeviceInfo.TYPE_USB_DEVICE to "USB Audio",
+        AudioDeviceInfo.TYPE_USB_HEADSET to "USB Audio",
+        AudioDeviceInfo.TYPE_WIRED_HEADSET to "Wired Audio",
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES to "Wired Audio"
+    )
+
     fun getAvailableSettings(ctx: Context, filterActions: Set<String>? = null): List<DiscoveredSetting> {
         val pm = ctx.packageManager
         val catalog = listOf(
@@ -78,11 +89,5 @@ object SystemCapabilities {
         }
     }
 
-    fun mapAudioDeviceType(type: Int): String = when (type) {
-        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth Audio"
-        AudioDeviceInfo.TYPE_HDMI, AudioDeviceInfo.TYPE_HDMI_ARC -> "HDMI Audio"
-        AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET -> "USB Audio"
-        AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Wired Audio"
-        else -> "Built-in Speaker"
-    }
+    fun mapAudioDeviceType(type: Int): String = audioTypeLabels[type] ?: "Built-in Speaker"
 }

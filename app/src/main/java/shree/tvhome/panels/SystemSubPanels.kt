@@ -38,6 +38,9 @@ object SystemSubPanels {
         TimeoutOption(2_147_483_647, "Never Sleep")
     )
 
+    private fun isTimeoutSelected(currentMs: Int, optionMs: Int): Boolean =
+        kotlin.math.abs(currentMs - optionMs) < 60_000 || (optionMs > 100_000_000 && currentMs > 100_000_000)
+
     @SuppressLint("MissingPermission")
     fun buildBluetoothPanel(ctx: Context, panel: LinearLayout, lp: LauncherPreferences, onBack: () -> Unit) {
         val bm = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -185,15 +188,16 @@ object SystemSubPanels {
 
     fun buildDisplayTimeoutAndNightPanel(ctx: Context, panel: LinearLayout, lp: LauncherPreferences, onBack: () -> Unit) {
         addHeader(ctx, panel, lp, "SCREEN SLEEP TIMEOUT")
+        val fallbackMs = SCREEN_TIMEOUT_OPTIONS.getOrElse(1) { SCREEN_TIMEOUT_OPTIONS.first() }.millis
         var currentTimeout = try {
-            Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, SCREEN_TIMEOUT_OPTIONS[1].millis)
-        } catch (_: Exception) { SCREEN_TIMEOUT_OPTIONS[1].millis }
+            Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, fallbackMs)
+        } catch (_: Exception) { fallbackMs }
 
         val cards = ArrayList<Pair<LinearLayout, TextView>>()
         SCREEN_TIMEOUT_OPTIONS.forEach { opt ->
             val ms = opt.millis
             val label = opt.label
-            val isSel = kotlin.math.abs(currentTimeout - ms) < 60_000 || (ms > 100_000_000 && currentTimeout > 100_000_000)
+            val isSel = isTimeoutSelected(currentTimeout, ms)
             val tv = text(ctx, if (isSel) "✓  $label" else "○  $label", 10.5f, if (isSel) lp.accentColor else Color.WHITE, true)
             val card = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -201,7 +205,7 @@ object SystemSubPanels {
                 background = cardBg(ctx, lp.accentColor, isSel)
                 setOnFocusChangeListener { v, f ->
                     MotionEngine.animateFocus(v, f, lp.motionStyle, 1.02f, 3f)
-                    v.background = cardBg(ctx, lp.accentColor, f || currentTimeout == ms)
+                    v.background = cardBg(ctx, lp.accentColor, f || isTimeoutSelected(currentTimeout, ms))
                 }
                 setOnClickListener {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.System.canWrite(ctx)) {
@@ -209,7 +213,7 @@ object SystemSubPanels {
                             Settings.System.putInt(ctx.contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, ms)
                             currentTimeout = ms
                             cards.forEachIndexed { idx, (cView, tView) ->
-                                val active = SCREEN_TIMEOUT_OPTIONS[idx].millis == ms
+                                val active = isTimeoutSelected(currentTimeout, SCREEN_TIMEOUT_OPTIONS[idx].millis)
                                 tView.text = if (active) "✓  ${SCREEN_TIMEOUT_OPTIONS[idx].label}" else "○  ${SCREEN_TIMEOUT_OPTIONS[idx].label}"
                                 tView.setTextColor(if (active) lp.accentColor else Color.WHITE)
                                 cView.background = cardBg(ctx, lp.accentColor, cView.hasFocus() || active)

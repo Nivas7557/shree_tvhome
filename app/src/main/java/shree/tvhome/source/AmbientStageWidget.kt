@@ -40,6 +40,19 @@ class AmbientStageWidget(
     private val lp: LauncherPreferences
 ) : LinearLayout(ctx) {
 
+    private data class WeatherVisualSpec(val range: IntRange, val emoji: String, val label: String)
+    private data class CitySuggestion(val name: String, val admin: String, val country: String, val lat: Double, val lon: Double)
+
+    private val weatherSpecs = listOf(
+        WeatherVisualSpec(0..0, "☀️", "Clear Sky"),
+        WeatherVisualSpec(1..2, "🌤️", "Partly Cloudy"),
+        WeatherVisualSpec(3..3, "☁️", "Overcast"),
+        WeatherVisualSpec(45..48, "🌫️", "Misty Fog"),
+        WeatherVisualSpec(51..67, "🌧️", "Light Rain"),
+        WeatherVisualSpec(80..82, "🌦️", "Rain Showers"),
+        WeatherVisualSpec(95..99, "⛈️", "Thunderstorm")
+    )
+
     private val analogView = ClassicLuxuryClockView(ctx)
     private val digitalTimeTv = TextView(ctx)
     private val amPmTv = TextView(ctx)
@@ -120,8 +133,9 @@ class AmbientStageWidget(
             setOnClickListener { showLiveCitySearchDialog() }
         }
 
+        val cachedVisual = decodeWeatherCode(lp.cachedWeatherCode)
         val wTop = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER }
-        weatherIconTv.apply { text = "⛅"; textSize = 28f; setPadding(0, 0, dp(8), 0) }
+        weatherIconTv.apply { text = cachedVisual.first; textSize = 28f; setPadding(0, 0, dp(8), 0) }
         tempTv.apply {
             text = lp.prefs.getString("cached_temp", "28°C") ?: "28°C"
             textSize = 23f
@@ -133,7 +147,7 @@ class AmbientStageWidget(
         weatherCard.addView(wTop)
 
         condTv.apply {
-            text = lp.prefs.getString("cached_cond", "Pleasant Sky") ?: "Pleasant Sky"
+            text = lp.prefs.getString("cached_cond", cachedVisual.second) ?: cachedVisual.second
             textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(145, 225, 255))
@@ -165,14 +179,6 @@ class AmbientStageWidget(
         cornerRadius = LauncherUtils.dpF(context, 18f)
         setStroke(dp(if (focused) 2 else 1), if (focused) lp.accentColor else Color.argb(80, 255, 255, 255))
     }
-
-    private data class CitySuggestion(
-        val name: String,
-        val admin: String,
-        val country: String,
-        val lat: Double,
-        val lon: Double
-    )
 
     private fun showLiveCitySearchDialog() {
         val dialog = Dialog(context)
@@ -317,7 +323,6 @@ class AmbientStageWidget(
         })
 
         dialog.show()
-        input.requestFocus()
         if (input.text.toString().trim().length >= 2) {
             triggerSearch(input.text.toString().trim())
         }
@@ -466,15 +471,9 @@ class AmbientStageWidget(
         return conn.inputStream.bufferedReader().use { it.readText() }
     }
 
-    private fun decodeWeatherCode(code: Int): Pair<String, String> = when (code) {
-        0 -> "☀️" to "Clear Sky"
-        1, 2 -> "🌤️" to "Partly Cloudy"
-        3 -> "☁️" to "Overcast"
-        45, 48 -> "🌫️" to "Misty Fog"
-        in 51..67 -> "🌧️" to "Light Rain"
-        in 80..82 -> "🌦️" to "Rain Showers"
-        in 95..99 -> "⛈️" to "Thunderstorm"
-        else -> "⛅" to "Pleasant Weather"
+    private fun decodeWeatherCode(code: Int): Pair<String, String> {
+        val matched = weatherSpecs.find { code in it.range }
+        return if (matched != null) matched.emoji to matched.label else "⛅" to "Pleasant Weather"
     }
 
     private fun updateTimeDisplay() {

@@ -61,67 +61,73 @@ class NightNudgeReceiver : BroadcastReceiver() {
         }
     }
 
-    override fun onReceive(context: Context, intent: Intent?) {
-        val cal = Calendar.getInstance()
-        val mins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
-        val appCtx = context.applicationContext
+    private data class NudgeWindowSpec(
+        val minuteRange: IntRange,
+        val durationMs: Long,
+        val mood: Int,
+        val colors: IntArray,
+        val messages: List<String>
+    )
 
-        val (msg, durationMs, moodType) = getNudgeConfig(mins)
-        if (msg != null) {
-            showFloatingBubble(appCtx, msg, durationMs, moodType)
-        }
-        scheduleNextNudge(appCtx)
-    }
-
-    private data class NudgeConfig(val message: String?, val durationMs: Long, val mood: Int)
-
-    private fun getNudgeConfig(mins: Int): NudgeConfig = when {
-        mins >= 1350 -> NudgeConfig(
-            listOf(
+    private val nudgeWindows = listOf(
+        NudgeWindowSpec(
+            minuteRange = 1350..1439,
+            durationMs = 10_000L,
+            mood = 1,
+            colors = intArrayOf(Color.argb(228, 55, 75, 165), Color.argb(236, 28, 38, 95)),
+            messages = listOf(
                 "🌙  Even the TV needs some rest now...",
                 "🔋  Human battery at 10% • Time to recharge!",
                 "✨  Tomorrow's plans start with tonight's sleep",
                 "🛋️  One last episode... or actual sleep?",
                 "💤  Winding down • Cozy blanket awaits"
-            ).random(),
-            10_000L,
-            1
-        )
-        mins in 0..215 -> NudgeConfig(
-            listOf(
+            )
+        ),
+        NudgeWindowSpec(
+            minuteRange = 0..215,
+            durationMs = 10_000L,
+            mood = 2,
+            colors = intArrayOf(Color.argb(232, 195, 55, 95), Color.argb(238, 95, 28, 72)),
+            messages = listOf(
                 "🦉  Midnight Owl detected! Dreams on, TV off",
                 "🚫  No TV zone! Your eyes deserve a break now",
                 "🌌  The stars are asleep, why are you awake?",
                 "⚡  Heads up: Morning alarm won't show mercy!",
                 "🛌  Past midnight • Time to call it a night"
-            ).random(),
-            10_000L,
-            2
-        )
-        mins in 240..359 -> NudgeConfig(
-            listOf(
+            )
+        ),
+        NudgeWindowSpec(
+            minuteRange = 240..359,
+            durationMs = 7_000L,
+            mood = 3,
+            colors = intArrayOf(Color.argb(230, 215, 135, 55), Color.argb(238, 135, 72, 32)),
+            messages = listOf(
                 "🌅  Got up early! Have a peaceful morning ✨",
                 "☕  Up before the sun! Fresh start today",
                 "✨  Quiet morning, clear mind • Great going!"
-            ).random(),
-            7_000L,
-            3
+            )
         )
-        else -> NudgeConfig(null, 0L, 0)
+    )
+
+    override fun onReceive(context: Context, intent: Intent?) {
+        val cal = Calendar.getInstance()
+        val mins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        val appCtx = context.applicationContext
+
+        val spec = nudgeWindows.find { mins in it.minuteRange }
+        if (spec != null) {
+            showFloatingBubble(appCtx, spec.messages.random(), spec.durationMs, spec.colors)
+        }
+        scheduleNextNudge(appCtx)
     }
 
-    private fun showFloatingBubble(ctx: Context, message: String, durationMs: Long, mood: Int) {
+    private fun showFloatingBubble(ctx: Context, message: String, durationMs: Long, colors: IntArray) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(ctx)) {
             Toast.makeText(ctx, message, Toast.LENGTH_LONG).show()
             return
         }
 
         val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
-        val colors = when (mood) {
-            2 -> intArrayOf(Color.argb(232, 195, 55, 95), Color.argb(238, 95, 28, 72))
-            3 -> intArrayOf(Color.argb(230, 215, 135, 55), Color.argb(238, 135, 72, 32))
-            else -> intArrayOf(Color.argb(228, 55, 75, 165), Color.argb(236, 28, 38, 95))
-        }
 
         val bubble = TextView(ctx).apply {
             text = message

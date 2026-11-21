@@ -42,4 +42,3 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug_${{ steps.timestamp.outputs.dt }}.apk
           retention-days: 7
           if-no-files-found: error
-          

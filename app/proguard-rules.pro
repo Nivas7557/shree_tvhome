@@ -4,6 +4,7 @@
 -repackageclasses ''
 
 -keep public class shree.tvhome.MainActivity
+-keep public class shree.tvhome.FocusTrap
 -keep public class shree.tvhome.source.NightNudgeReceiver
 -keep public class shree.tvhome.source.TvNotificationService
 

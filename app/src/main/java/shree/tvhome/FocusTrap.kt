@@ -1,12 +1,13 @@
-package shree.tvhome.panels
+package shree.tvhome
 
 import android.view.FocusFinder
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.SeekBar
+import shree.tvhome.panels.CustomizeMenuBuilder
 
-object DrawerFocusTrap {
+object FocusTrap {
 
     fun handleKeyEvent(
         event: KeyEvent,
@@ -24,9 +25,8 @@ object DrawerFocusTrap {
             code != KeyEvent.KEYCODE_DPAD_DOWN
         ) return false
 
-        var current = drawerLayout.findFocus()
-        val inDrawer = current != null
-        if (current == null) current = topNavBar.findFocus()
+        val current = drawerLayout.findFocus() ?: topNavBar.findFocus()
+        val inDrawer = drawerLayout.findFocus() != null
 
         if (inDrawer && current != null) {
             if (current is SeekBar && (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT)) {
@@ -38,8 +38,7 @@ object DrawerFocusTrap {
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     val subRow = current.parent as? ViewGroup ?: return true
                     val dir = if (code == KeyEvent.KEYCODE_DPAD_LEFT) View.FOCUS_LEFT else View.FOCUS_RIGHT
-                    val nextPill = FocusFinder.getInstance().findNextFocus(subRow, current, dir)
-                    (nextPill ?: current).requestFocus()
+                    FocusFinder.getInstance().findNextFocus(subRow, current, dir)?.requestFocus()
                     return true
                 }
                 if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
@@ -50,7 +49,6 @@ object DrawerFocusTrap {
         }
 
         if (code == KeyEvent.KEYCODE_DPAD_DOWN && !inDrawer && current != null) {
-            drawerLayout.requestFocus()
             return true
         }
 
@@ -72,14 +70,12 @@ object DrawerFocusTrap {
                 val parentBtn = if (activeParentTag.isNotEmpty()) {
                     topNavBar.findViewWithTag<View>(activeParentTag)
                 } else null
-                (parentBtn ?: topNavBar.findViewWithTag("nav_customize") ?: topNavBar).requestFocus()
+                (parentBtn ?: topNavBar.findViewWithTag("nav_customize"))?.requestFocus()
                 return true
             }
-
             return true
         }
 
-        drawerLayout.requestFocus()
-        return true
+        return false
     }
 }

@@ -45,7 +45,11 @@ object LauncherBackground {
         val name: String,
         val swatch: IntArray,
         val isLightSky: Boolean,
-        val particleKind: String
+        val particleKind: String,
+        val skyColors: IntArray,
+        val orb1Colors: IntArray,
+        val orb2Colors: IntArray,
+        val showMoon: Boolean = false
     )
 
     val SMART_MODES = listOf(
@@ -65,14 +69,75 @@ object LauncherBackground {
         )
     )
 
-    // Add or remove scenes here — WallpaperEditorPanel & DynamicCanvasView read directly from SCENES
+    // Single source of truth for scenes — WallpaperEditorPanel & DynamicCanvasView read directly from SCENES
     val SCENES = listOf(
-        SceneSpec(MODE_MORNING, "☀️", "Morning Mist", intArrayOf(Color.rgb(125, 195, 255), Color.rgb(245, 198, 165)), true, "orb"),
-        SceneSpec(MODE_PASTEL, "🌸", "Pastel Silk", intArrayOf(Color.rgb(185, 165, 245), Color.rgb(155, 225, 205)), true, "orb"),
-        SceneSpec(MODE_SUNSET, "🌇", "Golden Sunset", intArrayOf(Color.rgb(195, 68, 118), Color.rgb(255, 152, 78)), false, "orb"),
-        SceneSpec(MODE_AQUA, "🌊", "Emerald Aqua", intArrayOf(Color.rgb(12, 115, 152), Color.rgb(38, 192, 172)), false, "orb"),
-        SceneSpec(MODE_RAIN, "🌧️", "Rainy Mist", intArrayOf(Color.rgb(24, 58, 92), Color.rgb(65, 135, 175)), false, "rain"),
-        SceneSpec(MODE_COSMOS, "🌙", "Royal Moon", intArrayOf(Color.rgb(16, 24, 54), Color.rgb(48, 64, 125)), false, "star")
+        SceneSpec(
+            key = MODE_MORNING,
+            icon = "☀️",
+            name = "Morning Mist",
+            swatch = intArrayOf(Color.rgb(125, 195, 255), Color.rgb(245, 198, 165)),
+            isLightSky = true,
+            particleKind = "orb",
+            skyColors = intArrayOf(Color.rgb(168, 218, 255), Color.rgb(225, 240, 255), Color.rgb(255, 224, 198)),
+            orb1Colors = intArrayOf(Color.argb(210, 255, 242, 175), Color.argb(70, 255, 215, 130), Color.TRANSPARENT),
+            orb2Colors = intArrayOf(Color.argb(75, 92, 184, 255), Color.TRANSPARENT)
+        ),
+        SceneSpec(
+            key = MODE_PASTEL,
+            icon = "🌸",
+            name = "Pastel Silk",
+            swatch = intArrayOf(Color.rgb(185, 165, 245), Color.rgb(155, 225, 205)),
+            isLightSky = true,
+            particleKind = "orb",
+            skyColors = intArrayOf(Color.rgb(214, 198, 255), Color.rgb(196, 242, 228), Color.rgb(255, 206, 228)),
+            orb1Colors = intArrayOf(Color.argb(145, 165, 225, 255), Color.TRANSPARENT),
+            orb2Colors = intArrayOf(Color.argb(135, 255, 180, 225), Color.TRANSPARENT)
+        ),
+        SceneSpec(
+            key = MODE_SUNSET,
+            icon = "🌇",
+            name = "Golden Sunset",
+            swatch = intArrayOf(Color.rgb(195, 68, 118), Color.rgb(255, 152, 78)),
+            isLightSky = false,
+            particleKind = "orb",
+            skyColors = intArrayOf(Color.rgb(52, 24, 92), Color.rgb(195, 72, 118), Color.rgb(255, 152, 82)),
+            orb1Colors = intArrayOf(Color.argb(215, 255, 210, 110), Color.argb(85, 255, 110, 95), Color.TRANSPARENT),
+            orb2Colors = intArrayOf(Color.argb(80, 255, 195, 75), Color.TRANSPARENT)
+        ),
+        SceneSpec(
+            key = MODE_AQUA,
+            icon = "🌊",
+            name = "Emerald Aqua",
+            swatch = intArrayOf(Color.rgb(12, 115, 152), Color.rgb(38, 192, 172)),
+            isLightSky = false,
+            particleKind = "orb",
+            skyColors = intArrayOf(Color.rgb(6, 58, 112), Color.rgb(18, 138, 168), Color.rgb(42, 198, 178)),
+            orb1Colors = intArrayOf(Color.argb(140, 145, 255, 238), Color.TRANSPARENT),
+            orb2Colors = intArrayOf(Color.argb(95, 75, 235, 245), Color.TRANSPARENT)
+        ),
+        SceneSpec(
+            key = MODE_RAIN,
+            icon = "🌧️",
+            name = "Rainy Mist",
+            swatch = intArrayOf(Color.rgb(24, 58, 92), Color.rgb(65, 135, 175)),
+            isLightSky = false,
+            particleKind = "rain",
+            skyColors = intArrayOf(Color.rgb(16, 36, 62), Color.rgb(28, 68, 96), Color.rgb(14, 28, 48)),
+            orb1Colors = intArrayOf(Color.argb(110, 120, 195, 235), Color.TRANSPARENT),
+            orb2Colors = intArrayOf(Color.argb(70, 92, 184, 255), Color.TRANSPARENT)
+        ),
+        SceneSpec(
+            key = MODE_COSMOS,
+            icon = "🌙",
+            name = "Royal Moon",
+            swatch = intArrayOf(Color.rgb(16, 24, 54), Color.rgb(48, 64, 125)),
+            isLightSky = false,
+            particleKind = "star",
+            skyColors = intArrayOf(Color.rgb(10, 16, 36), Color.rgb(18, 28, 56), Color.rgb(8, 12, 28)),
+            orb1Colors = intArrayOf(Color.argb(220, 255, 245, 190), Color.argb(90, 255, 220, 130), Color.argb(25, 255, 200, 100), Color.TRANSPARENT),
+            orb2Colors = intArrayOf(Color.argb(65, 92, 184, 255), Color.TRANSPARENT),
+            showMoon = true
+        )
     )
 
     private val sceneMap by lazy { SCENES.associateBy { it.key } }
@@ -182,7 +247,7 @@ object LauncherBackground {
                 else -> MODE_COSMOS
             }
         }
-        return mode
+        return if (sceneMap.containsKey(mode)) mode else SCENES.last().key
     }
 
     private fun blendColor(c1: Int, c2: Int, ratio: Float): Int {
@@ -192,6 +257,12 @@ object LauncherBackground {
         val g = (Color.green(c1) + (Color.green(c2) - Color.green(c1)) * t).toInt()
         val b = (Color.blue(c1) + (Color.blue(c2) - Color.blue(c1)) * t).toInt()
         return Color.argb(a, r, g, b)
+    }
+
+    private fun tintWithAccent(colors: IntArray, accent: Int): IntArray {
+        return colors.mapIndexed { idx, col ->
+            if (idx == 0) blendColor(col, accent, 0.22f) else col
+        }.toIntArray()
     }
 
     private class PhotoWeatherAuraView(ctx: Context, private val lp: LauncherPreferences) : View(ctx) {
@@ -325,10 +396,10 @@ object LauncherBackground {
             val totalMins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
             lastCalculatedMinute = cal.get(Calendar.MINUTE)
 
-            val morning = intArrayOf(Color.rgb(168, 218, 255), Color.rgb(225, 240, 255), Color.rgb(255, 224, 198))
-            val pastel = intArrayOf(Color.rgb(214, 198, 255), Color.rgb(196, 242, 228), Color.rgb(255, 206, 228))
-            val sunset = intArrayOf(Color.rgb(52, 24, 92), Color.rgb(195, 72, 118), Color.rgb(255, 152, 82))
-            val night = intArrayOf(Color.rgb(10, 16, 36), Color.rgb(18, 28, 56), Color.rgb(8, 12, 28))
+            val morning = getScene(MODE_MORNING).skyColors
+            val pastel = getScene(MODE_PASTEL).skyColors
+            val sunset = getScene(MODE_SUNSET).skyColors
+            val night = getScene(MODE_COSMOS).skyColors
 
             val (from, to, ratio) = when {
                 totalMins in 300..419 -> Triple(night, morning, (totalMins - 300) / 120f)
@@ -345,44 +416,33 @@ object LauncherBackground {
             val wf = w.toFloat(); val hf = h.toFloat()
             val accentColor = lp.accentColor
             val isAuto = lp.liveWallpaperMode == MODE_SMART || lp.liveWallpaperMode == MODE_AUTO_TIME
+            val spec = getScene(activeEffectiveMode)
 
-            if (isAuto && activeEffectiveMode != MODE_RAIN) {
-                skyPaint.shader = LinearGradient(0f, 0f, wf, hf, getAutoSkyPalette(), floatArrayOf(0f, 0.52f, 1f), Shader.TileMode.CLAMP)
+            val activeSky = if (isAuto && spec.key != MODE_RAIN && spec.key != MODE_AQUA) {
+                getAutoSkyPalette()
+            } else {
+                spec.skyColors
             }
+            skyPaint.shader = LinearGradient(0f, 0f, wf, hf, activeSky, floatArrayOf(0f, 0.52f, 1f), Shader.TileMode.CLAMP)
 
-            when (activeEffectiveMode) {
-                MODE_MORNING -> {
-                    if (!isAuto) skyPaint.shader = LinearGradient(0f, 0f, wf, hf, intArrayOf(Color.rgb(168, 218, 255), Color.rgb(225, 240, 255), Color.rgb(255, 224, 198)), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
-                    orb1Paint.shader = RadialGradient(wf * 0.18f, hf * 0.16f, wf * 0.55f, intArrayOf(Color.argb(210, 255, 242, 175), Color.argb(70, 255, 215, 130), Color.TRANSPARENT), floatArrayOf(0f, 0.35f, 1f), Shader.TileMode.CLAMP)
-                    orb2Paint.shader = RadialGradient(wf * 0.78f, hf * 0.75f, wf * 0.50f, intArrayOf(LauncherUtils.withAlpha(accentColor, 75), Color.TRANSPARENT), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
-                }
-                MODE_PASTEL -> {
-                    if (!isAuto) skyPaint.shader = LinearGradient(0f, 0f, wf, hf, intArrayOf(Color.rgb(214, 198, 255), Color.rgb(196, 242, 228), Color.rgb(255, 206, 228)), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-                    orb1Paint.shader = RadialGradient(wf * 0.30f, hf * 0.35f, wf * 0.60f, intArrayOf(Color.argb(145, 165, 225, 255), Color.TRANSPARENT), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
-                    orb2Paint.shader = RadialGradient(wf * 0.75f, hf * 0.60f, wf * 0.55f, intArrayOf(Color.argb(135, 255, 180, 225), Color.TRANSPARENT), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
-                }
-                MODE_SUNSET -> {
-                    if (!isAuto) skyPaint.shader = LinearGradient(0f, 0f, wf, hf, intArrayOf(Color.rgb(52, 24, 92), Color.rgb(195, 72, 118), Color.rgb(255, 152, 82)), floatArrayOf(0f, 0.52f, 1f), Shader.TileMode.CLAMP)
-                    orb1Paint.shader = RadialGradient(wf * 0.50f, hf * 0.85f, wf * 0.65f, intArrayOf(Color.argb(215, 255, 210, 110), Color.argb(85, 255, 110, 95), Color.TRANSPARENT), floatArrayOf(0f, 0.35f, 1f), Shader.TileMode.CLAMP)
-                    orb2Paint.shader = RadialGradient(wf * 0.25f, hf * 0.25f, wf * 0.55f, intArrayOf(LauncherUtils.withAlpha(accentColor, 80), Color.TRANSPARENT), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
-                }
-                MODE_AQUA -> {
-                    skyPaint.shader = LinearGradient(0f, 0f, wf, hf, intArrayOf(Color.rgb(6, 58, 112), Color.rgb(18, 138, 168), Color.rgb(42, 198, 178)), floatArrayOf(0f, 0.52f, 1f), Shader.TileMode.CLAMP)
-                    orb1Paint.shader = RadialGradient(wf * 0.28f, hf * 0.22f, wf * 0.60f, intArrayOf(Color.argb(140, 145, 255, 238), Color.TRANSPARENT), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
-                    orb2Paint.shader = RadialGradient(wf * 0.78f, hf * 0.72f, wf * 0.55f, intArrayOf(LauncherUtils.withAlpha(accentColor, 95), Color.TRANSPARENT), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
-                }
-                MODE_RAIN -> {
-                    skyPaint.shader = LinearGradient(0f, 0f, wf, hf, intArrayOf(Color.rgb(16, 36, 62), Color.rgb(28, 68, 96), Color.rgb(14, 28, 48)), floatArrayOf(0f, 0.52f, 1f), Shader.TileMode.CLAMP)
-                    orb1Paint.shader = RadialGradient(wf * 0.35f, hf * 0.20f, wf * 0.65f, intArrayOf(Color.argb(110, 120, 195, 235), Color.TRANSPARENT), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
-                    orb2Paint.shader = RadialGradient(wf * 0.75f, hf * 0.75f, wf * 0.55f, intArrayOf(LauncherUtils.withAlpha(accentColor, 70), Color.TRANSPARENT), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
-                }
-                else -> {
-                    if (!isAuto) skyPaint.shader = LinearGradient(0f, 0f, wf, hf, intArrayOf(Color.rgb(10, 16, 36), Color.rgb(18, 28, 56), Color.rgb(8, 12, 28)), floatArrayOf(0f, 0.50f, 1f), Shader.TileMode.CLAMP)
-                    orb2Paint.shader = RadialGradient(wf * 0.32f, hf * 0.42f, wf * 0.65f, intArrayOf(LauncherUtils.withAlpha(accentColor, 65), Color.TRANSPARENT), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
-                    val moonX = wf * 0.5f; val moonY = hf * 0.15f; val moonR = 24f * resources.displayMetrics.density
-                    orb1Paint.shader = RadialGradient(moonX, moonY, wf * 0.5f, intArrayOf(Color.argb(220, 255, 245, 190), Color.argb(90, 255, 220, 130), Color.argb(25, 255, 200, 100), Color.TRANSPARENT), floatArrayOf(0f, 0.12f, 0.35f, 1f), Shader.TileMode.CLAMP)
-                    moonDiscPaint.shader = RadialGradient(moonX - moonR * 0.2f, moonY - moonR * 0.2f, moonR * 1.2f, intArrayOf(Color.rgb(255, 254, 245), Color.rgb(225, 236, 255)), null, Shader.TileMode.CLAMP)
-                }
+            val orb1X = if (spec.showMoon) wf * 0.5f else wf * 0.25f
+            val orb1Y = if (spec.showMoon) hf * 0.15f else hf * 0.28f
+            orb1Paint.shader = RadialGradient(
+                orb1X, orb1Y, wf * 0.58f,
+                tintWithAccent(spec.orb1Colors, accentColor), null, Shader.TileMode.CLAMP
+            )
+            orb2Paint.shader = RadialGradient(
+                wf * 0.75f, hf * 0.72f, wf * 0.56f,
+                tintWithAccent(spec.orb2Colors, accentColor), null, Shader.TileMode.CLAMP
+            )
+
+            if (spec.showMoon) {
+                val moonX = wf * 0.5f; val moonY = hf * 0.15f; val moonR = 24f * resources.displayMetrics.density
+                moonDiscPaint.shader = RadialGradient(
+                    moonX - moonR * 0.2f, moonY - moonR * 0.2f, moonR * 1.2f,
+                    intArrayOf(Color.rgb(255, 254, 245), Color.rgb(225, 236, 255)),
+                    null, Shader.TileMode.CLAMP
+                )
             }
         }
 
@@ -401,14 +461,14 @@ object LauncherBackground {
             canvas.save(); canvas.translate(driftX, driftY - parallaxY * 0.3f); canvas.drawRect(-w * 0.1f, -h * 0.1f, w * 1.1f, h * 1.1f, orb1Paint); canvas.restore()
             canvas.save(); canvas.translate(-driftX * 0.8f, -driftY * 0.8f); canvas.drawRect(-w * 0.1f, -h * 0.1f, w * 1.1f, h * 1.1f, orb2Paint); canvas.restore()
 
-            if (activeEffectiveMode == MODE_COSMOS) {
+            val sceneSpec = getScene(activeEffectiveMode)
+            if (sceneSpec.showMoon) {
                 val moonX = w * 0.5f; val moonY = h * 0.15f - parallaxY * 0.35f; val moonR = 24f * resources.displayMetrics.density
                 canvas.drawCircle(moonX, moonY, moonR, moonDiscPaint)
                 canvas.drawCircle(moonX - moonR * 0.32f, moonY - moonR * 0.18f, moonR * 0.22f, craterPaint)
                 canvas.drawCircle(moonX + moonR * 0.28f, moonY + moonR * 0.24f, moonR * 0.16f, craterPaint)
             }
 
-            val sceneSpec = getScene(activeEffectiveMode)
             for (s in particles) {
                 val wave = sin(phase * s.speed + s.offset) * cos(phase * s.speed * 0.6f + s.offset)
                 val pulse = 0.3f + 0.7f * Math.abs(wave)

@@ -28,17 +28,14 @@ object CustomizeMenuBuilder {
         activeAnchorButton = null
         row.animate().alpha(0f).scaleY(0.85f).setDuration(180L).withEndAction {
             (row.parent as? LinearLayout)?.removeView(row)
-            anchor?.requestFocus()
         }.start()
     }
 
     fun closeSubMenuAndNavigate(moveDown: Boolean) {
         val row = activeSubMenuRow ?: return
-        val anchor = activeAnchorButton
         activeSubMenuRow = null
         activeAnchorButton = null
         (row.parent as? LinearLayout)?.removeView(row)
-        anchor?.requestFocus()
     }
 
     fun build(
@@ -62,7 +59,7 @@ object CustomizeMenuBuilder {
             clipToPadding = false
         }
         topRow.addView(
-            makeActionTile(ctx, lp, "👤", lp.userName.ifBlank { "Shree" }, "Edit Profile & DP") {
+            makeActionTile(ctx, lp, "👤 ", lp.userName.ifBlank { "Shree" }, "Edit Profile & DP") {
                 onEditProfile()
             },
             LinearLayout.LayoutParams(0, dp(ctx, 52), 1f).apply { rightMargin = dp(ctx, 6) }
@@ -70,7 +67,7 @@ object CustomizeMenuBuilder {
 
         val hiddenCount = lp.getHiddenApps().size
         topRow.addView(
-            makeActionTile(ctx, lp, "👁", "Hidden Apps", "$hiddenCount hidden") {
+            makeActionTile(ctx, lp, "👁 ", "Hidden Apps", "$hiddenCount hidden") {
                 onCloseDrawer()
                 onOpenHidden()
             },

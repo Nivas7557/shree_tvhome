@@ -26,6 +26,14 @@ class GreetingShineCard(
     private var accentColor: Int
 ) : LinearLayout(ctx) {
 
+    private data class GreetingPeriodSpec(val hours: IntRange, val emoji: String, val label: String)
+
+    private val greetingPeriods = listOf(
+        GreetingPeriodSpec(5..11, "☀️", "Good Morning"),
+        GreetingPeriodSpec(12..16, "🌤️", "Good Afternoon"),
+        GreetingPeriodSpec(17..20, "🌆", "Good Evening")
+    )
+
     private val iconTv = TextView(ctx)
     private val titleTv = TextView(ctx)
     private var overlayBubble: TextView? = null
@@ -79,12 +87,10 @@ class GreetingShineCard(
         customPhrase = phrase
 
         val hr = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        val (emoji, autoGreet) = when (hr) {
-            in 5..11 -> "☀️" to "Good Morning"
-            in 12..16 -> "🌤️" to "Good Afternoon"
-            in 17..20 -> "🌆" to "Good Evening"
-            else -> "🌙" to "Good Night"
-        }
+        val matched = greetingPeriods.find { hr in it.hours }
+        val emoji = matched?.emoji ?: "🌙"
+        val autoGreet = matched?.label ?: "Good Night"
+
         iconTv.text = emoji
         val cleanName = userName.trim()
         titleTv.text = when {

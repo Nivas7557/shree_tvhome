@@ -24,6 +24,7 @@ import shree.tvhome.source.LauncherPreferences
 import shree.tvhome.source.LauncherUtils
 import shree.tvhome.source.MotionEngine
 import shree.tvhome.source.SystemCapabilities
+import shree.tvhome.source.TileThemePalette
 import shree.tvhome.source.TvNotificationService
 import java.util.Locale
 
@@ -103,7 +104,8 @@ class SideControlDrawer(
         isOpen = true
 
         val screenW = context.resources.displayMetrics.widthPixels
-        val dynamicDrawerW = maxOf(LauncherUtils.dp(context, 250), (screenW * (lp.panelWidthPct / 100f)).toInt())
+        val minStageW = LauncherUtils.dp(context, TileThemePalette.PANEL_MIN_WIDTH_DP)
+        val dynamicDrawerW = maxOf(minStageW, (screenW * (lp.panelWidthPct / 100f)).toInt())
         drawerLayout.layoutParams.width = dynamicDrawerW
         drawerLayout.clipChildren = false
         drawerLayout.clipToPadding = false
@@ -120,7 +122,7 @@ class SideControlDrawer(
         drawerLayout.visibility = View.VISIBLE
 
         setupDrawerSkeleton()
-        populateActivePanel(true)
+        populateActivePanel()
 
         if (!wasOpen) {
             MotionEngine.resetTransform(drawerLayout)
@@ -186,19 +188,19 @@ class SideControlDrawer(
         activeScroll?.addView(activePanel)
     }
 
-    private fun populateActivePanel(isInitialOpen: Boolean) {
+    private fun populateActivePanel() {
         val panel = activePanel ?: return
         panel.removeAllViews()
 
         when (currentMode) {
             MODE_CUSTOMIZE -> CustomizeMenuBuilder.build(
-                context, panel, lp, onLiveRefresh, { populateActivePanel(false) },
+                context, panel, lp, onLiveRefresh, { populateActivePanel() },
                 ::showProfileEditDialog,
                 { open(MODE_WALLPAPER_EDIT) },
                 onOpenHiddenRibbon,
                 ::close
             )
-            MODE_WIFI -> WifiPanelBuilder.build(context, panel, lp) { populateActivePanel(false) }
+            MODE_WIFI -> WifiPanelBuilder.build(context, panel, lp) { populateActivePanel() }
             MODE_ALERTS -> buildRealAlertsPanel(panel)
             MODE_POWER -> buildPowerPanel(panel)
             MODE_WALLPAPER_EDIT -> WallpaperEditorPanel.build(context, panel, lp, onWallpaperRefresh, onPickWallpaper) { open(MODE_CUSTOMIZE) }
@@ -209,7 +211,6 @@ class SideControlDrawer(
             MODE_SUB_STORAGE -> SystemSubPanels.buildStorageAndAppsPanel(context, panel, lp) { open(MODE_QUICK) }
             else -> buildControlCenter(panel)
         }
-        if (isInitialOpen) panel.post { panel.requestFocus() }
     }
 
     private fun buildControlCenter(panel: LinearLayout) {
@@ -493,7 +494,7 @@ class SideControlDrawer(
     fun showProfileEditDialog() {
         ProfileCropDialog.show(context, lp, onPickProfilePic) {
             onLiveRefresh()
-            if (isOpen) populateActivePanel(false)
+            if (isOpen) populateActivePanel()
         }
     }
 

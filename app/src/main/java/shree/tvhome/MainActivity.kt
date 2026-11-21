@@ -26,7 +26,6 @@ import android.widget.Toast
 import shree.tvhome.design.AppGridManager
 import shree.tvhome.design.AppTileFactory
 import shree.tvhome.panels.CustomizeMenuBuilder
-import shree.tvhome.panels.DrawerFocusTrap
 import shree.tvhome.panels.SideControlDrawer
 import shree.tvhome.source.AmbientStageWidget
 import shree.tvhome.source.LauncherBackground
@@ -34,6 +33,7 @@ import shree.tvhome.source.LauncherPreferences
 import shree.tvhome.source.LauncherUtils
 import shree.tvhome.source.MotionEngine
 import shree.tvhome.source.NightNudgeReceiver
+import shree.tvhome.source.TileThemePalette
 import shree.tvhome.source.TopNavBar
 
 class MainActivity : Activity() {
@@ -44,6 +44,7 @@ class MainActivity : Activity() {
 
     private lateinit var rootLayout: FrameLayout
     private lateinit var mainPage: LinearLayout
+    private lateinit var mainBody: LinearLayout
     private lateinit var topNavBar: TopNavBar
     private lateinit var hiddenSection: LinearLayout
     private lateinit var hiddenRow: LinearLayout
@@ -62,7 +63,7 @@ class MainActivity : Activity() {
     private val pkgReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             AppGridManager.clearCache()
-            refreshApps(!sideDrawer.isOpen)
+            syncAppGrid(allowFocusRestore = false)
         }
     }
 
@@ -106,7 +107,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (::appGrid.isInitialized) refreshApps(!sideDrawer.isOpen)
+        if (::appGrid.isInitialized) syncAppGrid(allowFocusRestore = false)
         if (::ambientStage.isInitialized) ambientStage.triggerWeatherRefresh(false)
     }
 
@@ -127,7 +128,9 @@ class MainActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (sideDrawer.isOpen && DrawerFocusTrap.handleKeyEvent(event, true, drawerLayout, topNavBar, sideDrawer.getParentNavTag())) {
+        if (::sideDrawer.isInitialized && sideDrawer.isOpen &&
+            FocusTrap.handleKeyEvent(event, true, drawerLayout, topNavBar, sideDrawer.getParentNavTag())
+        ) {
             return true
         }
         return super.dispatchKeyEvent(event)
@@ -164,6 +167,11 @@ class MainActivity : Activity() {
         } catch (_: Exception) { Toast.makeText(this, "No image picker found", Toast.LENGTH_SHORT).show() }
     }
 
+    private fun computeRightStageWidth(): Int {
+        val minStageW = LauncherUtils.dp(this, TileThemePalette.PANEL_MIN_WIDTH_DP)
+        return maxOf(minStageW, (resources.displayMetrics.widthPixels * (lp.panelWidthPct / 100f)).toInt())
+    }
+
     private fun buildScreen() {
         rootLayout = FrameLayout(this)
         LauncherBackground.apply(this, rootLayout, lp)
@@ -197,8 +205,8 @@ class MainActivity : Activity() {
         }
         mainPage.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        val rightStageW = maxOf(dp(250), (resources.displayMetrics.widthPixels * (lp.panelWidthPct / 100f)).toInt())
-        val mainBody = LinearLayout(this).apply {
+        val rightStageW = computeRightStageWidth()
+        mainBody = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(4), rightStageW + dp(16), 0)
             layoutTransition = LayoutTransition().apply {
@@ -259,7 +267,7 @@ class MainActivity : Activity() {
         favRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
         favHScroll.addView(favRow); favSection.addView(favHScroll); mainBody.addView(favSection)
 
-        val allHeader = AppGridManager.createHeader(this, "⊞  ALL APPS", false, lp) { refreshApps(true) }
+        val allHeader = AppGridManager.createHeader(this, "⊞  ALL APPS", false, lp) { syncAppGrid(allowFocusRestore = false) }
         allCount = allHeader.findViewWithTag("count_tv")
         mainBody.addView(allHeader, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
 
@@ -281,11 +289,11 @@ class MainActivity : Activity() {
         scrollContent.addView(appGrid); scroll.addView(scrollContent)
         mainBody.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        setupRightDrawer(contentArea, mainBody)
+        setupRightDrawer(contentArea)
         val nudgeView = topNavBar.createFloatingNudgeView()
         rootLayout.addView(nudgeView, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { topMargin = dp(52); leftMargin = dp(235) })
         setContentView(rootLayout)
-        refreshApps(true)
+        syncAppGrid(allowFocusRestore = false)
     }
 
     private fun openHiddenRibbon() {
@@ -293,7 +301,7 @@ class MainActivity : Activity() {
             val updated = lp.getHiddenApps().apply { remove(pkg) }
             lp.setHiddenApps(updated)
             Toast.makeText(this, "$label restored to Home", Toast.LENGTH_SHORT).show()
-            refreshApps(false, pkg)
+            syncAppGrid(allowFocusRestore = false, restorePkg = pkg)
             if (updated.isEmpty()) closeHiddenRibbon(pkg) else openHiddenRibbon()
         }
         if (hiddenSection.visibility == View.VISIBLE) {
@@ -307,12 +315,12 @@ class MainActivity : Activity() {
         hiddenSection.animate().alpha(0f).scaleY(0.90f).setDuration(220L).setInterpolator(LauncherUtils.SILKY_EASE)
             .withEndAction {
                 hiddenSection.visibility = View.GONE; hiddenSection.alpha = 1f; hiddenSection.scaleY = 1f
-                refreshApps(true, focusPkg)
+                syncAppGrid(allowFocusRestore = false, restorePkg = focusPkg)
             }.start()
     }
 
-    private fun setupRightDrawer(contentArea: FrameLayout, mainBody: LinearLayout) {
-        val drawerW = maxOf(dp(250), (resources.displayMetrics.widthPixels * (lp.panelWidthPct / 100f)).toInt())
+    private fun setupRightDrawer(contentArea: FrameLayout) {
+        val drawerW = computeRightStageWidth()
         ambientStage = AmbientStageWidget(this, lp)
         contentArea.addView(ambientStage, FrameLayout.LayoutParams(drawerW, -2, Gravity.END or Gravity.CENTER_VERTICAL))
 
@@ -329,7 +337,7 @@ class MainActivity : Activity() {
 
         sideDrawer = SideControlDrawer(
             this, drawerLayout, drawerScrim, mainPage, lp,
-            { applyLiveVisuals(mainBody) },
+            ::applyLiveVisuals,
             ::applyWallpaperOnly,
             { openImagePicker(REQ_PICK_WALLPAPER) },
             { openImagePicker(REQ_PICK_PROFILE_PIC) },
@@ -338,12 +346,12 @@ class MainActivity : Activity() {
         sideDrawer.attachStageWidget(ambientStage)
     }
 
-    private fun applyLiveVisuals(mainBody: LinearLayout) {
+    private fun applyLiveVisuals() {
         topNavBar.refreshProfileAvatar()
         topNavBar.refreshGreeting()
         LauncherBackground.updateThemeAndAccent(rootLayout, lp)
 
-        val newW = maxOf(dp(250), (resources.displayMetrics.widthPixels * (lp.panelWidthPct / 100f)).toInt())
+        val newW = computeRightStageWidth()
         mainBody.setPadding(0, dp(4), newW + dp(16), 0)
         ambientStage.layoutParams.width = newW
         ambientStage.refreshStyle()
@@ -365,7 +373,7 @@ class MainActivity : Activity() {
             drawerLayout.requestLayout()
         }
 
-        refreshApps(!sideDrawer.isOpen)
+        syncAppGrid(allowFocusRestore = false)
     }
 
     private fun applyWallpaperOnly() {
@@ -375,24 +383,26 @@ class MainActivity : Activity() {
         LauncherBackground.apply(this, rootLayout, lp)
     }
 
-    private fun refreshApps(shouldRequestFocus: Boolean, restorePkg: String? = null) {
+    private fun syncAppGrid(allowFocusRestore: Boolean, restorePkg: String? = null) {
         val isDrawerOpen = if (::sideDrawer.isInitialized) sideDrawer.isOpen else false
         AppGridManager.populate(
             this, lp, favSection, favRow, favCount, appGrid, allCount,
-            shouldRequestFocus, restorePkg, isDrawerOpen,
+            allowFocusRestore, restorePkg, isDrawerOpen,
             object : AppTileFactory.TileActions {
                 override fun onToggleFavorite(pkg: String, label: String) {
                     val list = lp.getOrderedFavorites(); val added = !list.contains(pkg)
                     if (added) list.add(pkg) else list.remove(pkg)
                     lp.setFavorites(list)
                     Toast.makeText(this@MainActivity, if (added) "$label added to Favorites" else "$label removed", Toast.LENGTH_SHORT).show()
-                    refreshApps(true, pkg)
+                    syncAppGrid(allowFocusRestore = false, restorePkg = pkg)
                 }
-                override fun onMoveFavorite(pkg: String, delta: Int) { if (lp.moveFavorite(pkg, delta)) refreshApps(true, pkg) }
+                override fun onMoveFavorite(pkg: String, delta: Int) {
+                    if (lp.moveFavorite(pkg, delta)) syncAppGrid(allowFocusRestore = false, restorePkg = pkg)
+                }
                 override fun onHideApp(pkg: String, label: String) {
                     val hidden = lp.getHiddenApps().apply { add(pkg) }; lp.setHiddenApps(hidden)
                     Toast.makeText(this@MainActivity, "$label hidden", Toast.LENGTH_SHORT).show()
-                    refreshApps(true)
+                    syncAppGrid(allowFocusRestore = false)
                 }
             }
         )

@@ -156,10 +156,6 @@ object WallpaperEditorPanel {
             setOnClickListener { lastFocusedTag = ""; onDone() }
         }
         panel.addView(donePill, LinearLayout.LayoutParams(-1, dp(ctx, 42)).apply { topMargin = dp(ctx, 10); bottomMargin = dp(ctx, 36) })
-
-        if (lastFocusedTag.isNotEmpty()) {
-            panel.post { panel.findViewWithTag<View>(lastFocusedTag)?.requestFocus() }
-        }
     }
 
     private fun rebuild(ctx: Context, panel: LinearLayout, lp: LauncherPreferences, onLive: () -> Unit, onPick: () -> Unit, onDone: () -> Unit) {

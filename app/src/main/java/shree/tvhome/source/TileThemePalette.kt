@@ -33,7 +33,6 @@ object TileThemePalette {
         val label: String
     )
 
-    // Add or remove themes here — CustomizeMenu & Tiles update automatically
     val THEMES = listOf(
         ThemeSpec(
             key = "frost",
@@ -93,7 +92,6 @@ object TileThemePalette {
         )
     )
 
-    // Add or remove accents here — CustomizeMenu updates automatically
     val ACCENTS = listOf(
         AccentSpec("royal", "Royal", Color.rgb(92, 184, 255)),
         AccentSpec("emerald", "Mint", Color.rgb(46, 232, 138)),
@@ -124,6 +122,7 @@ object TileThemePalette {
     )
 
     val PANEL_WIDTH_OPTIONS = listOf(20, 25, 30, 35)
+    const val PANEL_MIN_WIDTH_DP = 250
     val GRID_COL_RANGE = 3..8
 
     private val themeMap by lazy { THEMES.associateBy { it.key } }

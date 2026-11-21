@@ -9,8 +9,8 @@ import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
-import android.graphics.Matrix
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
@@ -76,7 +76,7 @@ class TopNavBar(
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            updateClockRamAndWifi()
+            syncLiveStatus(refreshProfile = false)
         }
     }
 
@@ -129,7 +129,7 @@ class TopNavBar(
         navItems.forEachIndexed { index, spec ->
             val leftPad = if (index == 0) 0 else dp(8)
             val view = when (spec.kind) {
-                "ram" -> buildRamPill(spec, barHeight)
+                "ram" -> buildRamPill(spec)
                 "wifi" -> buildWifiWidget(spec, barHeight)
                 "circle" -> makeVectorCircleButton(spec.icon, spec.tint, spec.tag, spec.onClick)
                 else -> makeVectorPill(spec.icon, spec.label.orEmpty(), spec.tint, spec.tag, spec.onClick)
@@ -217,11 +217,10 @@ class TopNavBar(
             }
         }
 
-        refreshProfileAvatar()
-        updateClockRamAndWifi()
+        syncLiveStatus(refreshProfile = true)
     }
 
-    private fun buildRamPill(spec: NavActionSpec, barHeight: Int): View {
+    private fun buildRamPill(spec: NavActionSpec): View {
         ramTv = makeText(spec.label.orEmpty(), 12.5f, Color.WHITE, true)
         return LinearLayout(context).apply {
             tag = spec.tag
@@ -351,8 +350,8 @@ class TopNavBar(
         return output
     }
 
-    private fun updateClockRamAndWifi() {
-        refreshProfileAvatar()
+    private fun syncLiveStatus(refreshProfile: Boolean) {
+        if (refreshProfile) refreshProfileAvatar()
         refreshGreeting()
         updateRamInfo()
         updateWifiVisualState()
@@ -521,7 +520,7 @@ class TopNavBar(
                 receiverRegistered = true
             } catch (_: Exception) {
             }
-            updateClockRamAndWifi()
+            syncLiveStatus(refreshProfile = true)
         }
     }
 

@@ -9,35 +9,40 @@ object MotionEngine {
 
     data class MotionStyleSpec(
         val key: String,
-        val label: String
-    )
-
-    // Add or remove motion styles here — CustomizeMenu reads directly from STYLES
-    val STYLES = listOf(
-        MotionStyleSpec("elastic", "Elastic"),
-        MotionStyleSpec("jelly", "Jelly"),
-        MotionStyleSpec("flip3d", "3D Flip"),
-        MotionStyleSpec("book", "Book Open"),
-        MotionStyleSpec("levitate", "Levitate"),
-        MotionStyleSpec("silk", "Silk Glide"),
-        MotionStyleSpec("swing", "Swing")
+        val label: String,
+        val focusInterpolator: TimeInterpolator,
+        val previewInterpolator: TimeInterpolator,
+        val focusEnterMs: Long,
+        val focusExitMs: Long,
+        val previewMs: Long,
+        val panelEnterMs: Long,
+        val panelExitMs: Long
     )
 
     private val OVERSHOOT = OvershootInterpolator(1.55f)
     private val JELLY_POP = OvershootInterpolator(2.1f)
     private val SILK_EASE = DecelerateInterpolator(2.2f)
 
-    fun getInterpolator(style: String): TimeInterpolator = when (style) {
-        "jelly" -> JELLY_POP
-        "silk", "levitate" -> SILK_EASE
-        else -> OVERSHOOT
-    }
+    // Single source of truth for motion styles — CustomizeMenuBuilder reads directly from STYLES
+    val STYLES = listOf(
+        MotionStyleSpec("elastic", "Elastic", OVERSHOOT, OVERSHOOT, 260L, 170L, 760L, 400L, 340L),
+        MotionStyleSpec("jelly", "Jelly", JELLY_POP, JELLY_POP, 340L, 200L, 760L, 440L, 340L),
+        MotionStyleSpec("flip3d", "3D Flip", OVERSHOOT, OVERSHOOT, 320L, 210L, 760L, 440L, 320L),
+        MotionStyleSpec("book", "Book Open", OVERSHOOT, OVERSHOOT, 320L, 210L, 760L, 440L, 320L),
+        MotionStyleSpec("levitate", "Levitate", SILK_EASE, SILK_EASE, 260L, 170L, 740L, 400L, 300L),
+        MotionStyleSpec("silk", "Silk Glide", SILK_EASE, SILK_EASE, 280L, 190L, 720L, 400L, 340L),
+        MotionStyleSpec("swing", "Swing", OVERSHOOT, OVERSHOOT, 260L, 170L, 760L, 440L, 320L)
+    )
 
-    fun getDuration(style: String, focused: Boolean): Long = when (style) {
-        "silk" -> if (focused) 280L else 190L
-        "flip3d", "book" -> if (focused) 320L else 210L
-        "jelly" -> if (focused) 340L else 200L
-        else -> if (focused) 260L else 170L
+    private val styleMap by lazy { STYLES.associateBy { it.key } }
+
+    fun getSpec(style: String): MotionStyleSpec = styleMap[style] ?: STYLES.first()
+
+    fun getInterpolator(style: String): TimeInterpolator = getSpec(style).focusInterpolator
+
+    fun getDuration(style: String, focused: Boolean): Long {
+        val spec = getSpec(style)
+        return if (focused) spec.focusEnterMs else spec.focusExitMs
     }
 
     private fun ensureCameraDistance(view: View) {
@@ -67,8 +72,9 @@ object MotionEngine {
     ) {
         view.animate().cancel()
         ensureCameraDistance(view)
-        val interp = getInterpolator(style)
-        val dur = getDuration(style, focused)
+        val spec = getSpec(style)
+        val interp = spec.focusInterpolator
+        val dur = if (focused) spec.focusEnterMs else spec.focusExitMs
         val tz = if (focused) LauncherUtils.dpF(view.context, elevationDp) else 0f
         val d = view.resources.displayMetrics.density
 
@@ -77,7 +83,7 @@ object MotionEngine {
             view.translationY = -dirY * 10f * d
         }
 
-        when (style) {
+        when (spec.key) {
             "jelly" -> {
                 view.pivotX = view.width / 2f; view.pivotY = view.height / 2f
                 if (focused) {
@@ -88,7 +94,7 @@ object MotionEngine {
                     .scaleY(if (focused) scale else 1f)
                     .translationX(0f).translationY(0f).rotationX(0f).rotationY(0f)
                     .translationZ(tz)
-                    .setDuration(dur).setInterpolator(JELLY_POP).start()
+                    .setDuration(dur).setInterpolator(interp).start()
             }
             "flip3d" -> {
                 view.pivotX = view.width / 2f; view.pivotY = view.height / 2f
@@ -119,7 +125,7 @@ object MotionEngine {
                     .translationY(if (focused) -6f * d else 0f)
                     .translationX(0f).rotationX(0f).rotationY(0f)
                     .translationZ(tz)
-                    .setDuration(dur).setInterpolator(SILK_EASE).start()
+                    .setDuration(dur).setInterpolator(interp).start()
             }
             "swing" -> {
                 view.pivotX = view.width * 0.5f; view.pivotY = 0f
@@ -146,49 +152,50 @@ object MotionEngine {
     fun playDemoPreview(panel: View, style: String) {
         resetTransform(panel)
         ensureCameraDistance(panel)
-        val w = maxOf(panel.width, LauncherUtils.dp(panel.context, 280)).toFloat()
+        val spec = getSpec(style)
+        val w = maxOf(panel.width, LauncherUtils.dp(panel.context, TileThemePalette.PANEL_MIN_WIDTH_DP + 30)).toFloat()
         val h = maxOf(panel.height, LauncherUtils.dp(panel.context, 420)).toFloat()
         val d = panel.resources.displayMetrics.density
 
-        when (style) {
+        when (spec.key) {
             "jelly" -> {
                 panel.pivotX = w / 2f; panel.pivotY = h / 2f
                 panel.scaleX = 0.86f; panel.scaleY = 1.12f
                 panel.animate().scaleX(1f).scaleY(1f)
-                    .setDuration(760L).setInterpolator(JELLY_POP).start()
+                    .setDuration(spec.previewMs).setInterpolator(spec.previewInterpolator).start()
             }
             "flip3d" -> {
                 panel.pivotX = w / 2f; panel.pivotY = h / 2f
                 panel.rotationY = 36f; panel.scaleX = 0.90f; panel.scaleY = 0.90f
                 panel.animate().rotationY(0f).scaleX(1f).scaleY(1f)
-                    .setDuration(760L).setInterpolator(OVERSHOOT).start()
+                    .setDuration(spec.previewMs).setInterpolator(spec.previewInterpolator).start()
             }
             "book" -> {
                 panel.pivotX = 0f; panel.pivotY = h / 2f
                 panel.rotationY = 34f; panel.alpha = 0.72f
                 panel.animate().rotationY(0f).alpha(1f)
-                    .setDuration(760L).setInterpolator(OVERSHOOT).start()
+                    .setDuration(spec.previewMs).setInterpolator(spec.previewInterpolator).start()
             }
             "levitate" -> {
                 panel.translationY = 44f * d; panel.alpha = 0.65f
                 panel.animate().translationY(0f).alpha(1f)
-                    .setDuration(740L).setInterpolator(SILK_EASE).start()
+                    .setDuration(spec.previewMs).setInterpolator(spec.previewInterpolator).start()
             }
             "swing" -> {
                 panel.pivotX = w * 0.5f; panel.pivotY = 0f
                 panel.rotationX = -22f; panel.scaleY = 0.92f
                 panel.animate().rotationX(0f).scaleY(1f)
-                    .setDuration(760L).setInterpolator(OVERSHOOT).start()
+                    .setDuration(spec.previewMs).setInterpolator(spec.previewInterpolator).start()
             }
             "silk" -> {
                 panel.translationX = 65f * d; panel.alpha = 0.60f
                 panel.animate().translationX(0f).alpha(1f)
-                    .setDuration(720L).setInterpolator(SILK_EASE).start()
+                    .setDuration(spec.previewMs).setInterpolator(spec.previewInterpolator).start()
             }
             else -> {
                 panel.translationX = 85f * d; panel.scaleX = 0.94f
                 panel.animate().translationX(0f).scaleX(1f)
-                    .setDuration(760L).setInterpolator(OVERSHOOT).start()
+                    .setDuration(spec.previewMs).setInterpolator(spec.previewInterpolator).start()
             }
         }
     }
@@ -196,6 +203,7 @@ object MotionEngine {
     fun animatePanelEnter(panel: View, stageWidget: View?, widthPx: Int, style: String, onDone: () -> Unit) {
         resetTransform(panel)
         ensureCameraDistance(panel)
+        val spec = getSpec(style)
         stageWidget?.let {
             it.animate().cancel()
             ensureCameraDistance(it)
@@ -203,7 +211,7 @@ object MotionEngine {
             it.animate()
                 .alpha(0f)
                 .scaleX(0.90f).scaleY(0.90f)
-                .rotationY(if (style == "flip3d") -24f else 0f)
+                .rotationY(if (spec.key == "flip3d") -24f else 0f)
                 .setDuration(260L)
                 .withEndAction {
                     it.visibility = View.GONE
@@ -212,45 +220,45 @@ object MotionEngine {
                 .start()
         }
 
-        val interp = getInterpolator(style)
-        val safeW = maxOf(widthPx, LauncherUtils.dp(panel.context, 250)).toFloat()
+        val interp = spec.focusInterpolator
+        val safeW = maxOf(widthPx, LauncherUtils.dp(panel.context, TileThemePalette.PANEL_MIN_WIDTH_DP)).toFloat()
         val safeH = maxOf(panel.height, LauncherUtils.dp(panel.context, 420)).toFloat()
         val d = panel.resources.displayMetrics.density
 
-        when (style) {
+        when (spec.key) {
             "jelly" -> {
                 panel.pivotX = safeW / 2f; panel.pivotY = safeH / 2f
                 panel.scaleX = 0.85f; panel.scaleY = 1.12f; panel.alpha = 0f
                 panel.animate().scaleX(1f).scaleY(1f).alpha(1f)
-                    .setDuration(440L).setInterpolator(JELLY_POP).withEndAction(onDone).start()
+                    .setDuration(spec.panelEnterMs).setInterpolator(interp).withEndAction(onDone).start()
             }
             "flip3d" -> {
                 panel.pivotX = safeW / 2f; panel.pivotY = safeH / 2f
                 panel.rotationY = 34f; panel.alpha = 0f; panel.scaleX = 0.92f; panel.scaleY = 0.92f
                 panel.animate().rotationY(0f).alpha(1f).scaleX(1f).scaleY(1f)
-                    .setDuration(440L).setInterpolator(interp).withEndAction(onDone).start()
+                    .setDuration(spec.panelEnterMs).setInterpolator(interp).withEndAction(onDone).start()
             }
             "book" -> {
                 panel.pivotX = 0f; panel.pivotY = safeH / 2f
                 panel.rotationY = 32f; panel.alpha = 0f
                 panel.animate().rotationY(0f).alpha(1f)
-                    .setDuration(440L).setInterpolator(interp).withEndAction(onDone).start()
+                    .setDuration(spec.panelEnterMs).setInterpolator(interp).withEndAction(onDone).start()
             }
             "levitate" -> {
                 panel.translationY = 48f * d; panel.alpha = 0f
                 panel.animate().translationY(0f).alpha(1f)
-                    .setDuration(400L).setInterpolator(SILK_EASE).withEndAction(onDone).start()
+                    .setDuration(spec.panelEnterMs).setInterpolator(interp).withEndAction(onDone).start()
             }
             "swing" -> {
                 panel.pivotX = safeW * 0.5f; panel.pivotY = 0f
                 panel.rotationX = -20f; panel.alpha = 0f
                 panel.animate().rotationX(0f).alpha(1f)
-                    .setDuration(440L).setInterpolator(interp).withEndAction(onDone).start()
+                    .setDuration(spec.panelEnterMs).setInterpolator(interp).withEndAction(onDone).start()
             }
             else -> {
                 panel.translationX = safeW + 30f; panel.alpha = 0f
                 panel.animate().translationX(0f).alpha(1f)
-                    .setDuration(400L).setInterpolator(interp).withEndAction(onDone).start()
+                    .setDuration(spec.panelEnterMs).setInterpolator(interp).withEndAction(onDone).start()
             }
         }
     }
@@ -258,6 +266,7 @@ object MotionEngine {
     fun animatePanelExit(panel: View, stageWidget: View?, widthPx: Int, style: String, onDone: () -> Unit) {
         panel.animate().cancel()
         ensureCameraDistance(panel)
+        val spec = getSpec(style)
         stageWidget?.let {
             it.animate().cancel()
             resetTransform(it)
@@ -265,37 +274,37 @@ object MotionEngine {
             it.visibility = View.VISIBLE
             it.alpha = 0f
             it.scaleX = 0.92f; it.scaleY = 0.92f
-            it.rotationY = if (style == "flip3d") 24f else 0f
+            it.rotationY = if (spec.key == "flip3d") 24f else 0f
             it.animate().alpha(1f).scaleX(1f).scaleY(1f).rotationY(0f)
-                .setDuration(380L).setInterpolator(getInterpolator(style)).start()
+                .setDuration(380L).setInterpolator(spec.focusInterpolator).start()
         }
 
-        val safeW = maxOf(widthPx, LauncherUtils.dp(panel.context, 250)).toFloat()
+        val safeW = maxOf(widthPx, LauncherUtils.dp(panel.context, TileThemePalette.PANEL_MIN_WIDTH_DP)).toFloat()
         val finish = { resetTransform(panel); onDone() }
 
-        when (style) {
+        when (spec.key) {
             "flip3d" -> {
                 panel.pivotX = safeW / 2f
                 panel.animate().rotationY(-34f).alpha(0f).scaleX(0.92f).scaleY(0.92f)
-                    .setDuration(320L).withEndAction(finish).start()
+                    .setDuration(spec.panelExitMs).withEndAction(finish).start()
             }
             "book" -> {
                 panel.pivotX = 0f
                 panel.animate().rotationY(32f).alpha(0f)
-                    .setDuration(320L).withEndAction(finish).start()
+                    .setDuration(spec.panelExitMs).withEndAction(finish).start()
             }
             "levitate" -> {
                 panel.animate().translationY(42f).alpha(0f)
-                    .setDuration(300L).withEndAction(finish).start()
+                    .setDuration(spec.panelExitMs).withEndAction(finish).start()
             }
             "swing" -> {
                 panel.pivotX = safeW * 0.5f; panel.pivotY = 0f
                 panel.animate().rotationX(-18f).alpha(0f)
-                    .setDuration(320L).withEndAction(finish).start()
+                    .setDuration(spec.panelExitMs).withEndAction(finish).start()
             }
             else -> {
                 panel.animate().translationX(safeW + 30f).alpha(0f)
-                    .setDuration(340L).setInterpolator(getInterpolator(style)).withEndAction(finish).start()
+                    .setDuration(spec.panelExitMs).setInterpolator(spec.focusInterpolator).withEndAction(finish).start()
             }
         }
     }

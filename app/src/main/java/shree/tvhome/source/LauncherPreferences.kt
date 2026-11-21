@@ -60,7 +60,7 @@ class LauncherPreferences(context: Context) {
         set(value) = prefs.edit().putInt(PREF_COLUMNS, value.coerceIn(TileThemePalette.GRID_COL_RANGE)).apply()
 
     var panelWidthPct: Int
-        get() = prefs.getInt(PREF_PANEL_WIDTH, TileThemePalette.PANEL_WIDTH_OPTIONS.getOrElse(1) { 25 })
+        get() = prefs.getInt(PREF_PANEL_WIDTH, TileThemePalette.PANEL_WIDTH_OPTIONS.getOrElse(1) { TileThemePalette.PANEL_WIDTH_OPTIONS.first() })
             .coerceIn(TileThemePalette.PANEL_WIDTH_OPTIONS.first(), TileThemePalette.PANEL_WIDTH_OPTIONS.last())
         set(value) = prefs.edit().putInt(
             PREF_PANEL_WIDTH,
