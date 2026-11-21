@@ -22,6 +22,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import shree.tvhome.design.AppGridManager
+import shree.tvhome.core.DrawerPanelRegistry
 import shree.tvhome.source.LauncherPreferences
 import shree.tvhome.source.LauncherUtils
 import shree.tvhome.source.MotionEngine
