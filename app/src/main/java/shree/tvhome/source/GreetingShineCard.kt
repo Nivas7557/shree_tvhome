@@ -17,6 +17,7 @@ import android.view.Gravity
 import android.view.animation.LinearInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
+import shree.tvhome.core.GlassSurfaceSpec
 import java.util.Calendar
 
 class GreetingShineCard(
