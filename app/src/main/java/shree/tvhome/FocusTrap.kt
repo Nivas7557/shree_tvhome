@@ -102,7 +102,9 @@ object FocusTrap {
                 val parentBtn = if (activeParentTag.isNotEmpty()) {
                     topNavBar.findViewWithTag<View>(activeParentTag)
                 } else null
-                (parentBtn ?: topNavBar.findViewWithTag("nav_customize"))?.requestFocus()
+                val fallbackNav = topNavBar.findFocus() ?: topNavBar.getChildAt(0)
+                val targetNav = parentBtn ?: fallbackNav
+                targetNav?.post { targetNav.requestFocus() }
                 return true
             }
             return true
