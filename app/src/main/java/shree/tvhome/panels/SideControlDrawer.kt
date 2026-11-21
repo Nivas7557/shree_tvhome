@@ -133,25 +133,40 @@ class SideControlDrawer(
             FocusTrap.focusFirstInPanel(activePanel, drawerLayout)
         }
         
-        if (!wasOpen) {
-            MotionEngine.resetTransform(drawerLayout)
-            MotionEngine.animatePanelEnter(drawerLayout, stageWidget, dynamicDrawerW, lp.motionStyle) {}
-        } else {
-            MotionEngine.playDemoPreview(drawerLayout, lp.motionStyle)
+        FocusTrap.prepareNaturalFocus(drawerLayout)
+        FocusTrap.prepareNaturalFocus(activePanel)
+        activePanel?.let { panelView ->
+            panelView.post {
+                if (isOpen && panelView.findFocus() == null) {
+                    panelView.descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
+                    val firstOption = android.view.FocusFinder.getInstance()
+                        .findNextFocus(panelView, null, View.FOCUS_DOWN)
+                    panelView.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+                    firstOption?.requestFocus()
+                }
+            }
         }
     }
 
-    fun close() {
+fun close() {
         if (!isOpen) return
-        val returnTag = getParentNavTag()
-        isOpen = false; currentMode = ""
+        isOpen = false
+        val closingMode = currentMode
+        currentMode = ""
         val out = maxOf(dp(340f), drawerLayout.width + dp(30f))
-        
+
+        val originTag = DrawerPanelRegistry.getDestination(closingMode)?.navTag
+        drawerLayout.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         MotionEngine.animatePanelExit(drawerLayout, stageWidget, out, lp.motionStyle) {
-            scrim.visibility = View.GONE; drawerLayout.visibility = View.GONE
+            drawerLayout.clearFocus()
+            scrim.visibility = View.GONE
+            drawerLayout.visibility = View.GONE
+            drawerLayout.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             val rootView = drawerLayout.rootView
-            val anchorBtn = if (returnTag.isNotEmpty()) rootView?.findViewWithTag<View>(returnTag) else null
-            anchorBtn?.post { anchorBtn.requestFocus() }
+            val anchor = if (!originTag.isNullOrEmpty()) rootView?.findViewWithTag<View>(originTag) else null
+            if (anchor != null && rootView?.findFocus() == null) {
+                anchor.requestFocus()
+            }
         }
         drawerLayout.post { onLiveRefresh() }
     }
