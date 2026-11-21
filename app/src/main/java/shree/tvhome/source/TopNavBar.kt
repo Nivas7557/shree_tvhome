@@ -108,31 +108,31 @@ class TopNavBar(
             clipToPadding = false
         }
 
-        greetingCard = GreetingShineCard(
-            context = context,
-            initialName = lp.userName,
-            initialPhrase = lp.greetingPhrase,
-            accentColor = lp.accentColor,
-            avatarSizePx = dp(32)
-        ).apply {
-            isFocusable = true
-            isClickable = true
-            setOnClickListener { callbacks.onProfileClick() }
-            setOnFocusChangeListener { v, hasFocus ->
-                MotionEngine.animateFocus(v, hasFocus, lp.motionStyle, 1.03f, 2f)
-            }
-        }
+    greetingCard = GreetingShineCard(
+         context = context,
+         initialName = lp.userName,
+         initialPhrase = lp.greetingPhrase,
+         accentColor = lp.accentColor,
+         avatarSizePx = dp(58)
+     ).apply {
+         isFocusable = true
+         isClickable = true
+         setOnClickListener { callbacks.onProfileClick() }
+         setOnFocusChangeListener { v, hasFocus ->
+             MotionEngine.animateFocus(v, hasFocus, lp.motionStyle, 1.03f, 2f)
+         }
+     }
 
-        barRow.addView(
-          greetingCard,
-          LinearLayout.LayoutParams(
-              LinearLayout.LayoutParams.WRAP_CONTENT,
-              dp(42),
-              0f
-          ).apply {
-              gravity = Gravity.START or Gravity.CENTER_VERTICAL
-          }
-      )
+     barRow.addView(
+         greetingCard,
+         LinearLayout.LayoutParams(
+             LinearLayout.LayoutParams.WRAP_CONTENT,
+             LinearLayout.LayoutParams.WRAP_CONTENT,
+             0f
+         ).apply {
+             gravity = Gravity.START or Gravity.CENTER_VERTICAL
+         }
+     )
 
         val rightControls = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
