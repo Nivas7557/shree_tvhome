@@ -1,6 +1,7 @@
 package shree.tvhome.design
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.graphics.Color
@@ -60,15 +61,20 @@ object AppTileFactory {
         }
     }
 
+    private fun pxToDpFloat(ctx: Context, px: Int): Float {
+        val density = ctx.resources.displayMetrics.density.coerceAtLeast(1f)
+        return px / density
+    }
+
     fun resolveMetrics(ctx: Context, lp: LauncherPreferences, customW: Int = 0, customH: Int = 0): TileMetrics {
         val sizeSpec = TileThemePalette.getTileSizeSpec(lp.tileSize)
         val baseW = if (customW > 0) customW else LauncherUtils.dp(ctx, sizeSpec.desiredGridDp)
         val baseH = if (customH > 0) customH else (baseW * 0.9f).toInt().coerceAtLeast(LauncherUtils.dp(ctx, 88))
         val baseIcon = (minOf(baseW, baseH) * 0.44f).toInt().coerceAtLeast(LauncherUtils.dp(ctx, 28))
-        val labelSp = sizeSpec.labelSp
+        val labelSp = 10.5f
 
         val radiusDp = when (lp.tileShape) {
-            "circle", "pill" -> (minOf(LauncherUtils.pxToDp(ctx, baseW), LauncherUtils.pxToDp(ctx, baseH)) * 0.45f).coerceAtLeast(16f)
+            "circle", "pill" -> (minOf(pxToDpFloat(ctx, baseW), pxToDpFloat(ctx, baseH)) * 0.45f).coerceAtLeast(16f)
             "square" -> 10f
             "rounded" -> 18f
             else -> 16f
@@ -89,42 +95,10 @@ object AppTileFactory {
         cornerRadiusDp: Float,
         focused: Boolean
     ): GradientDrawable {
-        val themeSpec = TileThemePalette.THEMES.find { it.key == lp.tileColor }
-            ?: TileThemePalette.THEMES.firstOrNull()
-
-        val accent = lp.accentColor
-        val strokePx = LauncherUtils.dp(ctx, if (focused) 2 else 1).coerceAtLeast(1)
-
-        if (themeSpec != null) {
-            val topCol = if (focused) {
-                LauncherUtils.withAlpha(accent, 150)
-            } else {
-                LauncherUtils.withAlpha(themeSpec.startColor, 125)
-            }
-            val bottomCol = if (focused) {
-                LauncherUtils.withAlpha(accent, 180)
-            } else {
-                LauncherUtils.withAlpha(themeSpec.endColor, 100)
-            }
-            val borderCol = if (focused) {
-                accent
-            } else {
-                LauncherUtils.withAlpha(accent, 95)
-            }
-
-            return GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(topCol, bottomCol)
-            ).apply {
-                cornerRadius = LauncherUtils.dpF(ctx, cornerRadiusDp)
-                setStroke(strokePx, borderCol)
-            }
-        }
-
         return GlassSurfaceSpec.createDrawable(
             ctx = ctx,
             style = GlassSurfaceSpec.PANEL_CARD,
-            accentColor = accent,
+            accentColor = lp.accentColor,
             focused = focused,
             active = false
         ).apply {
@@ -138,18 +112,16 @@ object AppTileFactory {
         cornerRadiusDp: Float,
         focused: Boolean
     ): GradientDrawable {
-        val themeSpec = TileThemePalette.THEMES.find { it.key == lp.tileColor }
         val accent = lp.accentColor
-        val baseFill = themeSpec?.endColor ?: accent
         val fillColor = if (focused) {
             LauncherUtils.withAlpha(accent, 195)
         } else {
-            LauncherUtils.withAlpha(baseFill, 115)
+            LauncherUtils.withAlpha(accent, 110)
         }
         val strokeColor = if (focused) {
             Color.WHITE
         } else {
-            LauncherUtils.withAlpha(accent, 135)
+            LauncherUtils.withAlpha(accent, 145)
         }
 
         return GradientDrawable().apply {
@@ -285,7 +257,7 @@ object AppTileFactory {
             )
         )
 
-        // App name block: dynamic width (no fixed width) + accent/theme palette styling
+        // App name block: dynamic width + accent palette styling
         val labelBlock = TextView(ctx).apply {
             tag = "label_block"
             text = appLabel
@@ -340,8 +312,6 @@ object AppTileFactory {
                 accent = lp.accentColor,
                 isHiddenMode = false,
                 onToggleFav = { actions.onToggleFavorite(pkg, appLabel) },
-                onMoveLeft = { actions.onMoveFavorite(pkg, -1) },
-                onMoveRight = { actions.onMoveFavorite(pkg, 1) },
                 onHideOrUnhideApp = { actions.onHideApp(pkg, appLabel) }
             )
             true
