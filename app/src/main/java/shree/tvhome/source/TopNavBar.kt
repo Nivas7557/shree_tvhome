@@ -582,11 +582,14 @@ class TopNavBar(
         }
     }
 
-    private fun pillBg(focused: Boolean, accent: Int) = GradientDrawable().apply {
-        setColor(if (focused) Color.argb(110, 255, 255, 255) else Color.argb(54, 22, 32, 68))
-        setStroke(dp(if (focused) 2 else 1), if (focused) accent else Color.argb(95, 255, 255, 255))
-        cornerRadius = LauncherUtils.dpF(context, 22f)
-    }
+    private fun pillBg(focused: Boolean, accent: Int) = GlassSurfaceSpec.createDrawable(
+        ctx = context,
+        style = GlassSurfaceSpec.PILL_NAV,
+        accentColor = accent,
+        focused = focused,
+        active = false,
+        orientation = GradientDrawable.Orientation.TOP_BOTTOM
+    )
 
     private fun makeText(value: String, size: Float, color: Int, bold: Boolean) = TextView(context).apply {
         text = value
