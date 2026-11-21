@@ -1,64 +1,52 @@
 package shree.tvhome.source
 
 import android.animation.ValueAnimator
-import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Matrix
-import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
-import android.net.wifi.WifiManager
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
-import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import shree.tvhome.core.GlassSurfaceSpec
-import kotlin.math.roundToInt
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class TopNavBar(
     context: Context,
     private val lp: LauncherPreferences,
-    private val callbacks: NavCallbacks
+    private val onProfileClick: () -> Unit,
+    private val onVoiceClick: () -> Unit,
+    private val onWifiClick: () -> Unit,
+    private val onAlertsClick: () -> Unit,
+    private val onCustomizeClick: () -> Unit,
+    private val onQuickClick: () -> Unit,
+    private val onPowerClick: () -> Unit
 ) : FrameLayout(context) {
 
-    interface NavCallbacks {
-        fun onProfileClick()
-        fun onVoiceSearch()
-        fun onWifiClick()
-        fun onAlertsClick()
-        fun onCustomizeClick()
-        fun onQuickSettingsClick()
-        fun onPowerClick()
-    }
-
-    private data class NavActionSpec(
-        val kind: String,
-        val icon: String,
+    private data class NavPillSpec(
+        val iconKind: String,
         val label: String?,
         val tint: Int,
         val tag: String,
         val onClick: () -> Unit
     )
 
-    private lateinit var avatarImageView: ImageView
-    private lateinit var avatarInitialTv: TextView
     private lateinit var greetingCard: GreetingShineCard
     private lateinit var nudgeOverlayBubble: TextView
     private lateinit var ramTv: TextView
@@ -81,505 +69,337 @@ class TopNavBar(
         }
     }
 
-    private val cycleRunnable = object : Runnable {
+    private val clockTicker = object : Runnable {
         override fun run() {
-            if (!::wifiLabelTv.isInitialized) return
+            updateClockAndGreeting()
+            handler.postDelayed(this, 15_000L)
+        }
+    }
+
+    private val wifiPulseTicker = object : Runnable {
+        override fun run() {
             if (wifiStateMode == 1) {
                 showConnectingAlt = !showConnectingAlt
-                wifiLabelTv.animate().alpha(0f).setDuration(180L).withEndAction {
-                    wifiLabelTv.text = if (showConnectingAlt) "Connecting..." else "WI-FI"
-                    wifiLabelTv.animate().alpha(1f).setDuration(220L).start()
-                }.start()
-                handler.postDelayed(this, 1600L)
-            } else if (wifiStateMode == 0) {
-                triggerMistBubbleCycle()
-                handler.postDelayed(this, 10_000L)
+                applyWifiVisuals(connected = false, ssid = lastShownSsid)
+                handler.postDelayed(this, 650L)
             }
         }
     }
 
+    private val navPills = ArrayList<Pair<View, Int>>()
+
     init {
         clipChildren = false
         clipToPadding = false
-        setPadding(0, 0, 0, 0)
+        setPadding(dp(18), dp(12), dp(18), dp(8))
+        build()
+        syncLiveStatus(refreshProfile = true)
+    }
 
-        val barHeight = dp(38)
-        val avatarSize = dp(88)
-
-        val rightControls = LinearLayout(context).apply {
+    private fun build() {
+        val barRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             clipChildren = false
             clipToPadding = false
         }
 
-        val navItems = listOf(
-            NavActionSpec("pill", "mic", "Voice Search", Color.rgb(120, 195, 255), "nav_voice") { callbacks.onVoiceSearch() },
-            NavActionSpec("ram", "bolt", "RAM --%", Color.rgb(255, 215, 95), "nav_ram") {
-                System.gc()
-                updateRamInfo()
-                Toast.makeText(context, "Memory refreshed • ${ramTv.text}", Toast.LENGTH_SHORT).show()
-            },
-            NavActionSpec("wifi", "wifi", "WI-FI", Color.WHITE, "nav_wifi") { callbacks.onWifiClick() },
-            NavActionSpec("circle", "bell", null, Color.rgb(255, 210, 95), "nav_alerts") { callbacks.onAlertsClick() },
-            NavActionSpec("circle", "sparkle", null, Color.rgb(175, 145, 255), "nav_customize") { callbacks.onCustomizeClick() },
-            NavActionSpec("circle", "gear", null, Color.WHITE, "nav_quick") { callbacks.onQuickSettingsClick() },
-            NavActionSpec("circle", "power", null, Color.rgb(255, 115, 130), "nav_power") { callbacks.onPowerClick() }
-        )
-
-        navItems.forEachIndexed { index, spec ->
-            val leftPad = if (index == 0) 0 else dp(8)
-            val view = when (spec.kind) {
-                "ram" -> buildRamPill(spec)
-                "wifi" -> buildWifiWidget(spec, barHeight)
-                "circle" -> makeVectorCircleButton(spec.icon, spec.tint, spec.tag, spec.onClick)
-                else -> makeVectorPill(spec.icon, spec.label.orEmpty(), spec.tint, spec.tag, spec.onClick)
+        greetingCard = GreetingShineCard(
+            context = context,
+            initialName = lp.userName,
+            initialPhrase = lp.greetingPhrase,
+            accentColor = lp.accentColor,
+            avatarSizePx = dp(32)
+        ).apply {
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { onProfileClick() }
+            setOnFocusChangeListener { v, hasFocus ->
+                MotionEngine.animateFocus(v, hasFocus, lp.motionStyle, 1.03f, 2f)
             }
-            val lpSpec = if (spec.kind == "circle") {
-                LinearLayout.LayoutParams(barHeight, barHeight)
-            } else {
-                LinearLayout.LayoutParams(-2, barHeight)
-            }.apply { leftMargin = leftPad }
-            rightControls.addView(view, lpSpec)
         }
 
-        val profileHeroGroup = FrameLayout(context).apply {
+        barRow.addView(
+            greetingCard,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(42),
+                Gravity.START or Gravity.CENTER_VERTICAL
+            )
+        )
+
+        val rightControls = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
             clipChildren = false
             clipToPadding = false
         }
 
-        val cardGapFromAvatar = dp(8)
-        greetingCard = GreetingShineCard(context, lp.userName, lp.greetingPhrase, lp.accentColor).apply {
-            setPadding(dp(14), dp(7), dp(16), dp(7))
-        }
-        profileHeroGroup.addView(
-            greetingCard,
-            FrameLayout.LayoutParams(-2, dp(40), Gravity.START or Gravity.CENTER_VERTICAL).apply {
-                leftMargin = avatarSize + cardGapFromAvatar
-            }
+        val specs = listOf(
+            NavPillSpec("mic", null, Color.WHITE, "nav_voice", onVoiceClick),
+            NavPillSpec("wifi", "Wi-Fi", Color.WHITE, "nav_wifi", onWifiClick),
+            NavPillSpec("bell", null, Color.WHITE, "nav_alerts", onAlertsClick),
+            NavPillSpec("palette", null, Color.WHITE, "nav_customize", onCustomizeClick),
+            NavPillSpec("sliders", null, Color.WHITE, "nav_quick", onQuickClick),
+            NavPillSpec("power", null, Color.argb(255, 255, 110, 110), "nav_power", onPowerClick)
         )
 
-        val avatarFrame = FrameLayout(context).apply {
-            tag = "nav_profile"
-            isFocusable = true
-            isClickable = true
-            outlineProvider = null
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(lp.accentColor)
-                setStroke(dp(2), Color.WHITE)
+        specs.forEachIndexed { idx, spec ->
+            val pill = buildNavPill(spec)
+            if (spec.tag == "nav_wifi") {
+                wifiPill = pill
             }
-            setOnFocusChangeListener { v, f ->
-                MotionEngine.animateFocus(v, f, lp.motionStyle, 1.08f, 12f)
-                v.background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(lp.accentColor)
-                    setStroke(dp(if (f) 3 else 2), if (f) lp.accentColor else Color.WHITE)
+            rightControls.addView(
+                pill,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(38)
+                ).apply {
+                    if (idx < specs.lastIndex) rightMargin = dp(8)
                 }
-            }
-            setOnClickListener { callbacks.onProfileClick() }
+            )
         }
-        avatarInitialTv = TextView(context).apply {
-            textSize = 30f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-        }
-        avatarImageView = ImageView(context).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            visibility = View.GONE
-        }
-        avatarFrame.addView(avatarInitialTv, FrameLayout.LayoutParams(-1, -1))
-        avatarFrame.addView(avatarImageView, FrameLayout.LayoutParams(-1, -1))
 
-        profileHeroGroup.addView(
-            avatarFrame,
-            FrameLayout.LayoutParams(avatarSize, avatarSize, Gravity.START or Gravity.CENTER_VERTICAL)
+        barRow.addView(
+            rightControls,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                leftMargin = dp(12)
+            }
         )
+
+        addView(barRow, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
 
         nudgeOverlayBubble = TextView(context).apply {
-            textSize = 10.5f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.argb(250, 255, 246, 225))
-            setPadding(dp(12), dp(4), dp(14), dp(4))
-            isSingleLine = true
-            elevation = LauncherUtils.dpF(context, 10f)
-            visibility = View.GONE
-        }
-        greetingCard.attachOverlayBubble(nudgeOverlayBubble)
-
-        addView(rightControls, FrameLayout.LayoutParams(-2, barHeight, Gravity.END or Gravity.CENTER_VERTICAL))
-        addView(profileHeroGroup, FrameLayout.LayoutParams(-2, barHeight, Gravity.START or Gravity.CENTER_VERTICAL))
-
-        post {
-            val availableForLeft = width - rightControls.width - dp(16)
-            if (availableForLeft > avatarSize + dp(40)) {
-                greetingCard.layoutParams.width = minOf(greetingCard.measuredWidth, availableForLeft - dp(20))
-                greetingCard.requestLayout()
-            }
-        }
-
-        syncLiveStatus(refreshProfile = true)
-    }
-
-    private fun buildRamPill(spec: NavActionSpec): View {
-        ramTv = makeText(spec.label.orEmpty(), 12.5f, Color.WHITE, true)
-        return LinearLayout(context).apply {
-            tag = spec.tag
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(13), 0, dp(13), 0)
-            isFocusable = true
-            isClickable = true
-            addView(VectorIconView(context, spec.icon, spec.tint), LinearLayout.LayoutParams(dp(15), dp(15)).apply { rightMargin = dp(6) })
-            addView(ramTv)
-            background = pillBg(false, lp.accentColor)
-            setOnFocusChangeListener { v, f ->
-                MotionEngine.animateFocus(v, f, lp.motionStyle, 1.06f, 6f)
-                v.background = pillBg(f, lp.accentColor)
-            }
-            setOnClickListener { spec.onClick() }
-        }
-    }
-
-    private fun buildWifiWidget(spec: NavActionSpec, barHeight: Int): View {
-        val wifiWrapper = FrameLayout(context).apply {
-            clipChildren = false
-            clipToPadding = false
-        }
-        wifiIconView = VectorIconView(context, spec.icon, spec.tint)
-        wifiLabelTv = makeText(spec.label.orEmpty(), 13f, Color.WHITE, true)
-        wifiPill = LinearLayout(context).apply {
-            tag = spec.tag
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(14), 0, dp(14), 0)
-            isFocusable = true
-            isClickable = true
-            addView(wifiIconView, LinearLayout.LayoutParams(dp(16), dp(16)).apply { rightMargin = dp(6) })
-            addView(wifiLabelTv)
-            background = pillBg(false, lp.accentColor)
-            setOnFocusChangeListener { v, f ->
-                MotionEngine.animateFocus(v, f, lp.motionStyle, 1.07f, 8f)
-                if (wifiStateMode == 2) {
-                    val green = Color.rgb(46, 232, 138)
-                    v.background = GradientDrawable().apply {
-                        setColor(if (f) Color.argb(125, 34, 130, 86) else Color.argb(75, 24, 98, 64))
-                        setStroke(dp(if (f) 2 else 1), if (f) Color.WHITE else green)
-                        cornerRadius = LauncherUtils.dpF(context, 22f)
-                    }
-                } else {
-                    v.background = pillBg(f, lp.accentColor)
-                }
-            }
-            setOnClickListener { spec.onClick() }
-        }
-
-        wifiWrapper.addView(wifiPill, FrameLayout.LayoutParams(-2, barHeight, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
-
-        wifiBubbleTv = TextView(context).apply {
             textSize = 9.5f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
-            setPadding(dp(9), dp(2), dp(9), dp(2))
-            maxWidth = dp(135)
-            ellipsize = TextUtils.TruncateAt.END
-            isSingleLine = true
-            visibility = View.GONE
+            visibility = GONE
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(220, 20, 32, 66))
+                cornerRadius = LauncherUtils.dpF(context, 12f)
+                setStroke(dp(1), Color.argb(140, 255, 255, 255))
+            }
         }
-        wifiWrapper.addView(
-            wifiBubbleTv,
-            FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(41) }
+        addView(
+            nudgeOverlayBubble,
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(44)
+                rightMargin = dp(8)
+            }
         )
-        return wifiWrapper
+
+        ramTv = TextView(context).apply {
+            visibility = GONE
+        }
+        addView(ramTv)
     }
 
-    fun createFloatingNudgeView(): TextView = nudgeOverlayBubble
+    private fun buildNavPill(spec: NavPillSpec): LinearLayout {
+        val pill = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            tag = spec.tag
+            isFocusable = true
+            isClickable = true
+            val hPad = if (spec.label != null) dp(12) else dp(10)
+            setPadding(hPad, dp(6), hPad, dp(6))
+            background = pillBg(focused = false, accent = lp.accentColor)
+            setOnClickListener { spec.onClick() }
+        }
 
-    fun refreshProfileAvatar() {
-        val cleanName = lp.userName.ifBlank { "Shree" }
-        val initial = cleanName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "S"
-        avatarInitialTv.text = initial
+        val iconView = VectorIconView(context, spec.iconKind, spec.tint).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(16), dp(16))
+        }
+        pill.addView(iconView)
 
-        val picUriStr = lp.prefs.getString("profile_pic_uri", null)
-        if (!picUriStr.isNullOrEmpty()) {
+        if (spec.tag == "nav_wifi") {
+            wifiIconView = iconView
+            wifiLabelTv = TextView(context).apply {
+                text = spec.label ?: "Wi-Fi"
+                textSize = 10f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                isSingleLine = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { leftMargin = dp(6) }
+            }
+            pill.addView(wifiLabelTv)
+
+            wifiBubbleTv = TextView(context).apply {
+                visibility = GONE
+            }
+            pill.addView(wifiBubbleTv)
+        } else if (spec.label != null) {
+            pill.addView(TextView(context).apply {
+                text = spec.label
+                textSize = 10f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                isSingleLine = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { leftMargin = dp(6) }
+            })
+        }
+
+        pill.setOnFocusChangeListener { v, hasFocus ->
+            MotionEngine.animateFocus(v, hasFocus, lp.motionStyle, 1.05f, 2f)
+            v.background = pillBg(focused = hasFocus, accent = lp.accentColor)
+        }
+
+        navPills.add(pill to spec.tint)
+        return pill
+    }
+
+    fun refreshProfile(lp: LauncherPreferences) {
+        greetingCard.updateGreeting(lp.userName, lp.greetingPhrase)
+        val uriStr = lp.profilePhotoUri
+        if (uriStr.isNullOrBlank()) {
+            greetingCard.setAvatarDrawable(null)
+        } else {
             try {
-                val uri = Uri.parse(picUriStr)
-                val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-                val rawBmp = context.contentResolver.openInputStream(uri)?.use {
-                    BitmapFactory.decodeStream(it, null, opts)
-                }
-                if (rawBmp != null) {
-                    val zoom = lp.prefs.getFloat("profile_pic_zoom", 1.0f)
-                    avatarImageView.setImageBitmap(makeCircularBitmap(rawBmp))
-                    avatarImageView.scaleX = zoom
-                    avatarImageView.scaleY = zoom
-                    avatarImageView.visibility = View.VISIBLE
-                    avatarInitialTv.visibility = View.GONE
-                    return
-                }
-            } catch (_: Exception) {}
-        }
-        avatarImageView.visibility = View.GONE
-        avatarInitialTv.visibility = View.VISIBLE
-    }
-
-    private fun makeCircularBitmap(src: Bitmap): Bitmap {
-        val outSize = 240
-        val output = Bitmap.createBitmap(outSize, outSize, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(output)
-        val cx = outSize / 2f
-        val cy = outSize / 2f
-        val r = outSize / 2f
-
-        val clipPath = Path().apply { addCircle(cx, cy, r, Path.Direction.CW) }
-        canvas.clipPath(clipPath)
-
-        val zoom = lp.prefs.getFloat("profile_pic_zoom", 1.0f)
-        val panX = lp.prefs.getFloat("profile_pic_pan_x", 0f)
-        val panY = lp.prefs.getFloat("profile_pic_pan_y", 0f)
-
-        val baseScale = maxOf(outSize.toFloat() / src.width, outSize.toFloat() / src.height)
-        val finalScale = baseScale * zoom
-
-        val matrix = Matrix().apply {
-            postTranslate(-src.width / 2f, -src.height / 2f)
-            postScale(finalScale, finalScale)
-            postTranslate(cx + (panX * r), cy + (panY * r))
-        }
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-        canvas.drawBitmap(src, matrix, paint)
-        return output
-    }
-
-    private fun syncLiveStatus(refreshProfile: Boolean) {
-        if (refreshProfile) refreshProfileAvatar()
-        refreshGreeting()
-        updateRamInfo()
-        updateWifiVisualState()
-    }
-
-    private fun updateRamInfo() {
-        try {
-            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return
-            val memInfo = ActivityManager.MemoryInfo()
-            am.getMemoryInfo(memInfo)
-            val total = memInfo.totalMem.coerceAtLeast(1L)
-            val used = (total - memInfo.availMem).coerceAtLeast(0L)
-            val pct = ((used.toDouble() / total.toDouble()) * 100.0).roundToInt().coerceIn(1, 99)
-            ramTv.text = "RAM $pct%"
-        } catch (_: Exception) {
-            ramTv.text = "RAM"
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun updateWifiVisualState() {
-        val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        val connectedSsid = TileThemePalette.getConnectedSsid(context).takeIf { it != "Wi-Fi" }
-        val isWifiEnabling = try { wm?.wifiState == WifiManager.WIFI_STATE_ENABLING } catch (_: Exception) { false }
-
-        val newMode = when {
-            connectedSsid != null -> 2
-            isWifiEnabling -> 1
-            else -> 0
-        }
-
-        if (newMode == wifiStateMode && (newMode != 2 || connectedSsid == lastShownSsid)) return
-        wifiStateMode = newMode
-        lastShownSsid = connectedSsid ?: ""
-
-        handler.removeCallbacks(cycleRunnable)
-        swingAnim?.cancel()
-        breatheAnim?.cancel()
-        wifiPill.scaleX = 1f
-        wifiPill.scaleY = 1f
-        wifiPill.alpha = 1f
-
-        when (newMode) {
-            2 -> {
-                val green = Color.rgb(46, 232, 138)
-                wifiIconView.setIcon("wifi", green)
-                wifiLabelTv.text = "WI-FI"
-                wifiPill.background = GradientDrawable().apply {
-                    setColor(Color.argb(75, 24, 98, 64))
-                    setStroke(dp(2), green)
-                    cornerRadius = LauncherUtils.dpF(context, 22f)
-                }
-                wifiBubbleTv.text = " $connectedSsid"
-                wifiBubbleTv.alpha = 1f
-                wifiBubbleTv.translationY = 0f
-                wifiBubbleTv.scaleX = 1f
-                wifiBubbleTv.scaleY = 1f
-                wifiBubbleTv.background = GradientDrawable().apply {
-                    setColor(Color.argb(205, 18, 72, 48))
-                    setStroke(dp(1), green)
-                    cornerRadius = LauncherUtils.dpF(context, 12f)
-                }
-                wifiBubbleTv.visibility = View.VISIBLE
-                startPendulumSwing()
-            }
-            1 -> {
-                wifiIconView.setIcon("wifi", Color.rgb(92, 184, 255))
-                wifiBubbleTv.visibility = View.GONE
-                wifiPill.background = pillBg(true, Color.rgb(92, 184, 255))
-                breatheAnim = ValueAnimator.ofFloat(0.96f, 1.04f).apply {
-                    duration = 950L
-                    repeatMode = ValueAnimator.REVERSE
-                    repeatCount = ValueAnimator.INFINITE
-                    interpolator = AccelerateDecelerateInterpolator()
-                    addUpdateListener {
-                        val s = it.animatedValue as Float
-                        wifiPill.scaleX = s
-                        wifiPill.scaleY = s
+                val uri = Uri.parse(uriStr)
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val bmp = BitmapFactory.decodeStream(stream)
+                    if (bmp != null) {
+                        greetingCard.setAvatarDrawable(BitmapDrawable(context.resources, bmp))
+                    } else {
+                        greetingCard.setAvatarDrawable(null)
                     }
-                    start()
                 }
-                handler.post(cycleRunnable)
-            }
-            else -> {
-                wifiIconView.setIcon("wifi", Color.WHITE)
-                wifiLabelTv.text = "WI-FI"
-                wifiPill.background = pillBg(false, lp.accentColor)
-                wifiBubbleTv.rotation = 0f
-                handler.post(cycleRunnable)
+            } catch (_: Exception) {
+                greetingCard.setAvatarDrawable(null)
             }
         }
     }
 
-    private fun startPendulumSwing() {
-        wifiBubbleTv.post {
-            wifiBubbleTv.pivotX = wifiBubbleTv.width / 2f
-            wifiBubbleTv.pivotY = 0f
-            swingAnim = ValueAnimator.ofFloat(-4f, 4f).apply {
-                duration = 2100L
-                repeatMode = ValueAnimator.REVERSE
+    fun setAccent(accent: Int) {
+        greetingCard.setAccentColor(accent)
+        refreshNavPills(accent)
+    }
+
+    private fun refreshNavPills(accent: Int) {
+        navPills.forEach { (view, _) ->
+            view.background = pillBg(focused = view.hasFocus(), accent = accent)
+        }
+    }
+
+    fun setAlertCount(count: Int) {
+        val alertPill = navPills.find { (it.first as? View)?.tag == "nav_alerts" }?.first as? LinearLayout ?: return
+        val existingBadge = alertPill.findViewWithTag<TextView>("alert_badge")
+        if (count <= 0) {
+            existingBadge?.let { alertPill.removeView(it) }
+            return
+        }
+        val badge = existingBadge ?: TextView(context).apply {
+            tag = "alert_badge"
+            textSize = 8.5f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(dp(5), dp(1), dp(5), dp(1))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(235, 225, 65, 65))
+                cornerRadius = LauncherUtils.dpF(context, 9f)
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { leftMargin = dp(5) }
+            alertPill.addView(this)
+        }
+        badge.text = if (count > 99) "99+" else count.toString()
+    }
+
+    fun showNightNudge(message: String) {
+        if (message.isBlank()) {
+            nudgeOverlayBubble.visibility = GONE
+            return
+        }
+        nudgeOverlayBubble.text = message
+        nudgeOverlayBubble.visibility = VISIBLE
+    }
+
+    fun syncLiveStatus(refreshProfile: Boolean = false) {
+        if (refreshProfile) {
+            refreshProfile(lp)
+        }
+        updateClockAndGreeting()
+        updateWifiStatus()
+        startAmbientMotion()
+    }
+
+    private fun updateClockAndGreeting() {
+        val timeFmt = SimpleDateFormat("hh:mm a", Locale.getDefault())
+        val nowTime = timeFmt.format(Date())
+        val basePhrase = lp.greetingPhrase.ifBlank { "Welcome" }
+        greetingCard.updateGreeting(lp.userName, "$basePhrase • $nowTime")
+    }
+
+    private fun updateWifiStatus() {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val activeNetwork = cm?.activeNetwork
+        val caps = if (activeNetwork != null) cm.getNetworkCapabilities(activeNetwork) else null
+        val isConnected = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true ||
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+
+        if (isConnected) {
+            wifiStateMode = 2
+            handler.removeCallbacks(wifiPulseTicker)
+            val ssid = lp.lastWifiSsid.ifBlank { "Connected" }
+            lastShownSsid = ssid
+            applyWifiVisuals(connected = true, ssid = ssid)
+        } else {
+            wifiStateMode = 0
+            handler.removeCallbacks(wifiPulseTicker)
+            applyWifiVisuals(connected = false, ssid = "Wi-Fi")
+        }
+    }
+
+    private fun applyWifiVisuals(connected: Boolean, ssid: String) {
+        if (!::wifiLabelTv.isInitialized) return
+        wifiLabelTv.text = when {
+            connected -> ssid
+            wifiStateMode == 1 && showConnectingAlt -> "Connecting..."
+            else -> "Wi-Fi"
+        }
+        if (::wifiIconView.isInitialized) {
+            wifiIconView.setTint(if (connected) lp.accentColor else Color.argb(190, 225, 235, 250))
+        }
+    }
+
+    private fun startAmbientMotion() {
+        if (swingAnim == null) {
+            swingAnim = ValueAnimator.ofFloat(-2f, 2f).apply {
+                duration = 2800L
                 repeatCount = ValueAnimator.INFINITE
-                interpolator = AccelerateDecelerateInterpolator()
-                addUpdateListener { wifiBubbleTv.rotation = it.animatedValue as Float }
+                repeatMode = ValueAnimator.REVERSE
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    val angle = it.animatedValue as Float
+                    navPills.find { p -> (p.first as? View)?.tag == "nav_alerts" }?.first?.rotation = angle
+                }
                 start()
             }
         }
-    }
-
-    private fun triggerMistBubbleCycle() {
-        wifiBubbleTv.animate().cancel()
-        wifiBubbleTv.text = "○ No Internet"
-        wifiBubbleTv.background = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(Color.argb(165, 95, 145, 210), Color.argb(120, 55, 90, 150))
-        ).apply {
-            setStroke(dp(1), Color.argb(160, 185, 225, 255))
-            cornerRadius = LauncherUtils.dpF(context, 12f)
-        }
-
-        wifiBubbleTv.visibility = View.VISIBLE
-        wifiBubbleTv.alpha = 0f
-        wifiBubbleTv.translationY = -dp(10).toFloat()
-        wifiBubbleTv.scaleX = 0.88f
-        wifiBubbleTv.scaleY = 0.88f
-        wifiBubbleTv.animate()
-            .alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
-            .setDuration(420L)
-            .setInterpolator(LauncherUtils.FLUID_SPRING)
-            .start()
-
-        handler.postDelayed({
-            if (wifiStateMode == 0 && wifiBubbleTv.visibility == View.VISIBLE) {
-                wifiBubbleTv.animate()
-                    .alpha(0f)
-                    .translationY(-dp(12).toFloat())
-                    .scaleX(1.16f)
-                    .scaleY(0.80f)
-                    .setDuration(650L)
-                    .setInterpolator(LauncherUtils.SILKY_EASE)
-                    .withEndAction { wifiBubbleTv.visibility = View.GONE }
-                    .start()
-            }
-        }, 4200L)
-    }
-
-    fun refreshGreeting() {
-        greetingCard.updateGreeting(lp.userName, lp.greetingPhrase)
-        greetingCard.setAccentColor(lp.accentColor)
-    }
-
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        if (!receiverRegistered) {
-            val filter = IntentFilter().apply {
-                addAction(Intent.ACTION_TIME_TICK)
-                addAction(Intent.ACTION_TIME_CHANGED)
-                addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
-                addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
-            }
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    context.registerReceiver(statusReceiver, filter, Context.RECEIVER_EXPORTED)
-                } else {
-                    context.registerReceiver(statusReceiver, filter)
+        if (breatheAnim == null) {
+            breatheAnim = ValueAnimator.ofFloat(0.98f, 1.02f).apply {
+                duration = 2400L
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    val sc = it.animatedValue as Float
+                    if (::wifiPill.isInitialized && !wifiPill.hasFocus()) {
+                        wifiPill.scaleX = sc
+                        wifiPill.scaleY = sc
+                    }
                 }
-                receiverRegistered = true
-            } catch (_: Exception) {
-            }
-            syncLiveStatus(refreshProfile = true)
-        }
-    }
-
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        handler.removeCallbacksAndMessages(null)
-        swingAnim?.cancel()
-        breatheAnim?.cancel()
-        if (receiverRegistered) {
-            try {
-                context.unregisterReceiver(statusReceiver)
-            } catch (_: Exception) {
-            }
-            receiverRegistered = false
-        }
-    }
-
-    private fun makeVectorPill(icon: String, label: String, iconTint: Int, tagStr: String, onClick: () -> Unit) = LinearLayout(context).apply {
-        tag = tagStr
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER
-        setPadding(dp(14), 0, dp(15), 0)
-        isFocusable = true
-        isClickable = true
-        addView(VectorIconView(context, icon, iconTint), LinearLayout.LayoutParams(dp(16), dp(16)).apply { rightMargin = dp(7) })
-        addView(makeText(label, 13f, Color.WHITE, true))
-        background = pillBg(false, lp.accentColor)
-        setOnFocusChangeListener { v, f ->
-            MotionEngine.animateFocus(v, f, lp.motionStyle, 1.07f, 8f)
-            v.background = pillBg(f, lp.accentColor)
-        }
-        setOnClickListener { onClick() }
-    }
-
-    private fun makeVectorCircleButton(icon: String, tint: Int, tagStr: String, onClick: () -> Unit) = FrameLayout(context).apply {
-        tag = tagStr
-        isFocusable = true
-        isClickable = true
-        background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.argb(62, 22, 32, 68))
-            setStroke(dp(1), Color.argb(105, 255, 255, 255))
-        }
-        val iv = VectorIconView(context, icon, tint)
-        addView(iv, FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER))
-        setOnClickListener { onClick() }
-        setOnFocusChangeListener { v, f ->
-            MotionEngine.animateFocus(v, f, lp.motionStyle, 1.15f, 8f)
-            v.background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(if (f) Color.argb(120, 255, 255, 255) else Color.argb(62, 22, 32, 68))
-                setStroke(dp(if (f) 2 else 1), if (f) lp.accentColor else Color.argb(105, 255, 255, 255))
-            }
-            when (icon) {
-                "gear" -> iv.animate().rotation(if (f) 60f else 0f).setDuration(240).start()
-                "bell" -> iv.animate().rotation(if (f) 18f else 0f).setDuration(200).start()
-                "sparkle" -> iv.animate().rotation(if (f) 45f else 0f).setDuration(240).start()
+                start()
             }
         }
     }
@@ -593,12 +413,44 @@ class TopNavBar(
         orientation = GradientDrawable.Orientation.TOP_BOTTOM
     )
 
-    private fun makeText(value: String, size: Float, color: Int, bold: Boolean) = TextView(context).apply {
-        text = value
-        textSize = size
-        setTextColor(color)
-        if (bold) typeface = Typeface.DEFAULT_BOLD
+    private fun dp(v: Int): Int = LauncherUtils.dp(context, v)
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (!receiverRegistered) {
+            val filter = IntentFilter().apply {
+                addAction(ConnectivityManager.CONNECTIVITY_ACTION)
+                addAction(Intent.ACTION_TIME_TICK)
+            }
+            try {
+                context.registerReceiver(statusReceiver, filter)
+                receiverRegistered = true
+            } catch (_: Exception) {
+            }
+        }
+        handler.removeCallbacks(clockTicker)
+        handler.post(clockTicker)
+        syncLiveStatus(refreshProfile = true)
     }
 
-    private fun dp(value: Int) = LauncherUtils.dp(context, value)
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        handler.removeCallbacks(clockTicker)
+        handler.removeCallbacks(wifiPulseTicker)
+        swingAnim?.cancel()
+        swingAnim = null
+        breatheAnim?.cancel()
+        breatheAnim = null
+        if (receiverRegistered) {
+            try {
+                context.unregisterReceiver(statusReceiver)
+            } catch (_: Exception) {
+            }
+            receiverRegistered = false
+        }
+    }
+
+    fun showToast(msg: String) {
+        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    }
 }
