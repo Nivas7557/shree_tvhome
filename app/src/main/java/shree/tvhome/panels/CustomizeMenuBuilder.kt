@@ -144,7 +144,8 @@ object CustomizeMenuBuilder {
                         allMotionButtons.forEach { (k, b) ->
                             b.background = chipBg(ctx, lp.accentColor, b.hasFocus() || k == lp.motionStyle)
                         }
-                        MotionEngine.playDemoPreview(panel, spec.key)
+                        val hostPanel = (panel.parent?.parent as? View) ?: panel
+                        MotionEngine.playDemoPreview(hostPanel, spec.key)
                     }
                 }
                 allMotionButtons.add(spec.key to btn)
