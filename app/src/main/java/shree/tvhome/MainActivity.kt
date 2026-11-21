@@ -140,6 +140,7 @@ class MainActivity : Activity() {
         ) {
             return true
         }
+        return super.dispatchKeyEvent(event)
     }
 
     @Deprecated("Deprecated in Java")
