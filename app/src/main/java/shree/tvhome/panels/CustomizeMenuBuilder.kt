@@ -64,7 +64,7 @@ object CustomizeMenuBuilder {
 
         val actionHeightPx = dp(ctx, 52)
         val chipHeightPx = 34
-        val swatchHeightPx = dp(ctx, 32)
+        val swatchHeightDp = 34
         val gapDp = 6
         val gapPx = dp(ctx, gapDp)
 
@@ -157,94 +157,44 @@ object CustomizeMenuBuilder {
         }
 
         if (MotionEngine.STYLES.isNotEmpty()) {
-            addHeader(ctx, panel, "GLOBAL MOTION STYLE (TAP TO PREVIEW)")
-            val motionButtons = ArrayList<Pair<String, TextView>>()
-            val colsPerRow = DynamicSectionBuilder.computeOptimalColumns(MotionEngine.STYLES.size, maxCols = 4)
-            MotionEngine.STYLES.chunked(colsPerRow).forEach { rowChunk ->
-                val r = LinearLayout(ctx).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    clipChildren = false
-                    clipToPadding = false
+            DynamicSectionBuilder.buildChipSection(
+                ctx = ctx,
+                panel = panel,
+                lp = lp,
+                headerTitle = "GLOBAL MOTION STYLE (TAP TO PREVIEW)",
+                items = MotionEngine.STYLES.map { it.key to it.label },
+                maxCols = 4,
+                chipHeightDp = chipHeightPx,
+                gapDp = gapDp,
+                syncListeners = liveSyncListeners,
+                getSelectedKey = { lp.motionStyle },
+                onSelectKey = { key ->
+                    lp.motionStyle = key
+                    val hostPanel = (panel.parent?.parent as? View) ?: panel
+                    MotionEngine.playDemoPreview(hostPanel, key)
+                    triggerInstantSync()
                 }
-                rowChunk.forEachIndexed { idx, spec ->
-                    val btn = TextView(ctx).apply {
-                        text = spec.label
-                        textSize = 9.5f
-                        typeface = Typeface.DEFAULT_BOLD
-                        setTextColor(Color.WHITE)
-                        gravity = Gravity.CENTER
-                        isFocusable = true
-                        isClickable = true
-                        background = chipBg(ctx, lp.accentColor, lp.motionStyle == spec.key)
-                        setOnFocusChangeListener { v, f ->
-                            MotionEngine.animateFocus(v, f, lp.motionStyle, 1.02f, 2f)
-                            v.background = chipBg(ctx, lp.accentColor, f || lp.motionStyle == spec.key)
-                        }
-                        setOnClickListener {
-                            lp.motionStyle = spec.key
-                            val hostPanel = (panel.parent?.parent as? View) ?: panel
-                            MotionEngine.playDemoPreview(hostPanel, spec.key)
-                            triggerInstantSync()
-                        }
-                    }
-                    motionButtons.add(spec.key to btn)
-                    r.addView(
-                        btn,
-                        LinearLayout.LayoutParams(0, dp(ctx, chipHeightPx), 1f).apply {
-                            if (idx < rowChunk.lastIndex) rightMargin = gapPx
-                        }
-                    )
-                }
-                panel.addView(r, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapPx })
-            }
-            liveSyncListeners.add {
-                motionButtons.forEach { (k, b) ->
-                    b.background = chipBg(ctx, lp.accentColor, b.hasFocus() || k == lp.motionStyle)
-                }
-            }
+            )
         }
 
         if (TileThemePalette.ACCENTS.isNotEmpty()) {
-            addHeader(ctx, panel, "ACCENT AURA")
-            val swatchViews = ArrayList<Pair<Int, View>>()
-            val rowCap = DynamicSectionBuilder.computeOptimalColumns(TileThemePalette.ACCENTS.size, maxCols = 4)
-            TileThemePalette.ACCENTS.chunked(rowCap).forEach { accentChunk ->
-                val swatchRow = LinearLayout(ctx).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    clipChildren = false
-                    clipToPadding = false
+            DynamicSectionBuilder.buildSwatchSection(
+                ctx = ctx,
+                panel = panel,
+                lp = lp,
+                headerTitle = "ACCENT AURA",
+                swatches = TileThemePalette.ACCENTS.map { it.color to it.label },
+                maxCols = 4,
+                swatchHeightDp = swatchHeightDp,
+                gapDp = gapDp,
+                syncListeners = liveSyncListeners,
+                isSelectedColor = { col -> lp.accentColor == col },
+                onSelectSwatch = { col, label ->
+                    lp.accentColor = col
+                    lp.accentName = label
+                    triggerInstantSync()
                 }
-                accentChunk.forEachIndexed { idx, spec ->
-                    val col = spec.color
-                    val dot = View(ctx).apply {
-                        isFocusable = true
-                        isClickable = true
-                        background = swatchChipBg(ctx, col, lp.accentColor == col)
-                        setOnFocusChangeListener { v, f ->
-                            MotionEngine.animateFocus(v, f, lp.motionStyle, 1.04f, 2f)
-                            v.background = swatchChipBg(ctx, col, f || lp.accentColor == col)
-                        }
-                        setOnClickListener {
-                            lp.accentColor = col
-                            lp.accentName = spec.label
-                            triggerInstantSync()
-                        }
-                    }
-                    swatchViews.add(col to dot)
-                    swatchRow.addView(
-                        dot,
-                        LinearLayout.LayoutParams(0, swatchHeightPx, 1f).apply {
-                            if (idx < accentChunk.lastIndex) rightMargin = gapPx
-                        }
-                    )
-                }
-                panel.addView(swatchRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapPx })
-            }
-            liveSyncListeners.add {
-                swatchViews.forEach { (c, v) ->
-                    v.background = swatchChipBg(ctx, c, v.hasFocus() || c == lp.accentColor)
-                }
-            }
+            )
         }
 
         if (TileThemePalette.THEMES.isNotEmpty()) {
@@ -377,13 +327,6 @@ object CustomizeMenuBuilder {
     ).apply {
         cornerRadius = LauncherUtils.dpF(ctx, 12f)
         setStroke(dp(ctx, if (active) 2 else 1), if (active) Color.WHITE else Color.argb(65, 255, 255, 255))
-    }
-
-    private fun swatchChipBg(ctx: Context, col: Int, active: Boolean) = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        setColor(col)
-        cornerRadius = LauncherUtils.dpF(ctx, 10f)
-        setStroke(dp(ctx, if (active) 2 else 1), if (active) Color.WHITE else Color.argb(120, 255, 255, 255))
     }
 
     private fun addHeader(ctx: Context, panel: LinearLayout, label: String) {
