@@ -183,13 +183,14 @@ class SideControlDrawer(
             isVerticalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
             isFillViewport = true
-            clipChildren = false
-            clipToPadding = false
+            clipChildren = true
+            clipToPadding = true
+            setPadding(0, dp(2f), 0, dp(2f))
         }
         activePanel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            clipChildren = false
-            clipToPadding = false
+            clipChildren = true
+            clipToPadding = true
             setPadding(dp(6f), dp(6f), dp(6f), dp(20f))
         }
         drawerLayout.addView(activeScroll, LinearLayout.LayoutParams(-1, 0, 1f))
