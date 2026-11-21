@@ -14,6 +14,8 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import shree.tvhome.FocusTrap
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
@@ -91,6 +93,8 @@ class SideControlDrawer(
         stageWidget = widget
     }
 
+    fun getActivePanelView(): ViewGroup? = activePanel
+
     fun getParentNavTag(): String =
         drawerHeaders.find { it.mode == currentMode }?.navTag ?: "nav_quick"
 
@@ -124,6 +128,10 @@ class SideControlDrawer(
         setupDrawerSkeleton()
         populateActivePanel()
 
+        drawerLayout.post {
+            FocusTrap.focusFirstInPanel(activePanel, drawerLayout)
+        }
+        
         if (!wasOpen) {
             MotionEngine.resetTransform(drawerLayout)
             MotionEngine.animatePanelEnter(drawerLayout, stageWidget, dynamicDrawerW, lp.motionStyle) {}
