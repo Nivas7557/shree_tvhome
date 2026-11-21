@@ -128,24 +128,7 @@ class SideControlDrawer(
 
         setupDrawerSkeleton()
         populateActivePanel()
-
-        drawerLayout.post {
-            FocusTrap.focusFirstInPanel(activePanel, drawerLayout)
-        }
-        
-        FocusTrap.prepareNaturalFocus(drawerLayout)
-        FocusTrap.prepareNaturalFocus(activePanel)
-        activePanel?.let { panelView ->
-            panelView.post {
-                if (isOpen && panelView.findFocus() == null) {
-                    panelView.descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
-                    val firstOption = android.view.FocusFinder.getInstance()
-                        .findNextFocus(panelView, null, View.FOCUS_DOWN)
-                    panelView.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-                    firstOption?.requestFocus()
-                }
-            }
-        }
+            FocusTrap.onPanelOpened(drawerLayout, activePanel)
     }
 
 fun close() {
@@ -156,17 +139,8 @@ fun close() {
         val out = maxOf(dp(340f), drawerLayout.width + dp(30f))
 
         val originTag = DrawerPanelRegistry.getDestination(closingMode)?.navTag
-        drawerLayout.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         MotionEngine.animatePanelExit(drawerLayout, stageWidget, out, lp.motionStyle) {
-            drawerLayout.clearFocus()
-            scrim.visibility = View.GONE
-            drawerLayout.visibility = View.GONE
-            drawerLayout.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-            val rootView = drawerLayout.rootView
-            val anchor = if (!originTag.isNullOrEmpty()) rootView?.findViewWithTag<View>(originTag) else null
-            if (anchor != null && rootView?.findFocus() == null) {
-                anchor.requestFocus()
-            }
+            FocusTrap.onPanelClosed(drawerLayout, drawerLayout.rootView?.findViewById(android.R.id.content), originTag)
         }
         drawerLayout.post { onLiveRefresh() }
     }
