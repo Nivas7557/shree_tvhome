@@ -142,11 +142,15 @@ class SideControlDrawer(
 
     fun close() {
         if (!isOpen) return
+        val returnTag = getParentNavTag()
         isOpen = false; currentMode = ""
         val out = maxOf(dp(340f), drawerLayout.width + dp(30f))
-
+        
         MotionEngine.animatePanelExit(drawerLayout, stageWidget, out, lp.motionStyle) {
             scrim.visibility = View.GONE; drawerLayout.visibility = View.GONE
+            val rootView = drawerLayout.rootView
+            val anchorBtn = if (returnTag.isNotEmpty()) rootView?.findViewWithTag<View>(returnTag) else null
+            anchorBtn?.post { anchorBtn.requestFocus() }
         }
         drawerLayout.post { onLiveRefresh() }
     }
