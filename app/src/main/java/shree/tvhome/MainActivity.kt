@@ -129,7 +129,14 @@ class MainActivity : Activity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (::sideDrawer.isInitialized && sideDrawer.isOpen &&
-            FocusTrap.handleKeyEvent(event, true, drawerLayout, topNavBar, sideDrawer.getParentNavTag())
+            FocusTrap.handleKeyEvent(
+                event = event,
+                isDrawerOpen = true,
+                drawerLayout = drawerLayout,
+                topNavBar = topNavBar,
+                activeParentTag = sideDrawer.getParentNavTag(),
+                activePanel = sideDrawer.getActivePanelView()
+            )
         ) {
             return true
         }

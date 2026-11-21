@@ -14,6 +14,8 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import shree.tvhome.FocusTrap
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
@@ -91,6 +93,8 @@ class SideControlDrawer(
         stageWidget = widget
     }
 
+    fun getActivePanelView(): ViewGroup? = activePanel
+
     fun getParentNavTag(): String =
         drawerHeaders.find { it.mode == currentMode }?.navTag ?: "nav_quick"
 
@@ -107,8 +111,8 @@ class SideControlDrawer(
         val minStageW = LauncherUtils.dp(context, TileThemePalette.PANEL_MIN_WIDTH_DP)
         val dynamicDrawerW = maxOf(minStageW, (screenW * (lp.panelWidthPct / 100f)).toInt())
         drawerLayout.layoutParams.width = dynamicDrawerW
-        drawerLayout.clipChildren = false
-        drawerLayout.clipToPadding = false
+        drawerLayout.clipChildren = true
+        drawerLayout.clipToPadding = true
         drawerLayout.requestLayout()
 
         drawerLayout.background = GradientDrawable(
@@ -124,11 +128,15 @@ class SideControlDrawer(
         setupDrawerSkeleton()
         populateActivePanel()
 
+        drawerLayout.post {
+            FocusTrap.focusFirstInPanel(activePanel, drawerLayout)
+        }
+        
         if (!wasOpen) {
             MotionEngine.resetTransform(drawerLayout)
             MotionEngine.animatePanelEnter(drawerLayout, stageWidget, dynamicDrawerW, lp.motionStyle) {}
         } else {
-            activePanel?.let { MotionEngine.playDemoPreview(it, lp.motionStyle) }
+            MotionEngine.playDemoPreview(drawerLayout, lp.motionStyle)
         }
     }
 
@@ -175,13 +183,14 @@ class SideControlDrawer(
             isVerticalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
             isFillViewport = true
-            clipChildren = false
-            clipToPadding = false
+            clipChildren = true
+            clipToPadding = true
+            setPadding(0, dp(2f), 0, dp(2f))
         }
         activePanel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            clipChildren = false
-            clipToPadding = false
+            clipChildren = true
+            clipToPadding = true
             setPadding(dp(6f), dp(6f), dp(6f), dp(20f))
         }
         drawerLayout.addView(activeScroll, LinearLayout.LayoutParams(-1, 0, 1f))
