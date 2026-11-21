@@ -204,7 +204,13 @@ class MainActivity : Activity() {
             override fun onQuickSettingsClick() = sideDrawer.toggle(SideControlDrawer.MODE_QUICK)
             override fun onPowerClick() = sideDrawer.toggle(SideControlDrawer.MODE_POWER)
         })
-        mainPage.addView(topNavBar, LinearLayout.LayoutParams(-1, dp(42)).apply { bottomMargin = dp(18) })
+        mainPage.addView(
+         topNavBar,
+         LinearLayout.LayoutParams(
+             LinearLayout.LayoutParams.MATCH_PARENT,
+             LinearLayout.LayoutParams.WRAP_CONTENT
+         ).apply { bottomMargin = dp(12) }
+     )
 
         val contentArea = FrameLayout(this).apply {
             clipChildren = false
