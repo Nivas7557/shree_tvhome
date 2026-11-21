@@ -124,13 +124,15 @@ class TopNavBar(
         }
 
         barRow.addView(
-            greetingCard,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                dp(42),
-                Gravity.START or Gravity.CENTER_VERTICAL
-            )
-        )
+          greetingCard,
+          LinearLayout.LayoutParams(
+              LinearLayout.LayoutParams.WRAP_CONTENT,
+              dp(42),
+              0f
+          ).apply {
+              gravity = Gravity.START or Gravity.CENTER_VERTICAL
+          }
+      )
 
         val rightControls = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
