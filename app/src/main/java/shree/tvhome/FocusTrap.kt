@@ -11,9 +11,10 @@ object FocusTrap {
 
     fun findFirstFocusableOption(root: View?): View? {
         if (root == null || root.visibility != View.VISIBLE || !root.isEnabled) return null
-        val isFocusableLeaf = root !is ViewGroup && root.isFocusable
-        if (isFocusableLeaf) return root
-
+        val tagStr = root.tag as? String ?: ""
+        if (root !is ViewGroup && root.isFocusable && !tagStr.startsWith("header_")) {
+            return root
+        }
         if (root is ViewGroup) {
             for (i in 0 until root.childCount) {
                 val match = findFirstFocusableOption(root.getChildAt(i))
@@ -37,8 +38,9 @@ object FocusTrap {
         }
         targetContainer.post {
             if (!targetContainer.isAttachedToWindow || targetContainer.visibility != View.VISIBLE) return@post
-            if (targetContainer.findFocus() == null) {
-                findFirstFocusableOption(targetContainer)?.requestFocus()
+            val firstOption = findFirstFocusableOption(targetContainer)
+            if (firstOption != null) {
+                firstOption.requestFocus()
             }
         }
     }
@@ -55,7 +57,7 @@ object FocusTrap {
             topNavBar.findViewWithTag<View>(originNavTag) ?: root?.findViewWithTag<View>(originNavTag)
         } else null
 
-        if (anchor != null && root?.findFocus() == null) {
+        if (anchor != null) {
             anchor.post { anchor.requestFocus() }
         }
     }
@@ -128,8 +130,9 @@ object FocusTrap {
                 val parentBtn = if (activeParentTag.isNotEmpty()) {
                     topNavBar.findViewWithTag<View>(activeParentTag)
                 } else null
-                val targetNav = parentBtn ?: topNavBar.findFocus()
-                targetNav?.requestFocus()
+                if (parentBtn != null) {
+                    parentBtn.requestFocus()
+                }
                 return true
             }
             return true
