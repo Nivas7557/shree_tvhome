@@ -16,9 +16,8 @@ object DynamicSectionBuilder {
 
     fun computeOptimalColumns(totalCount: Int, maxCols: Int = 4): Int {
         if (totalCount <= 0) return 1
-        if (totalCount <= maxCols) return totalCount
-        val rows = ceil(totalCount.toDouble() / maxCols).toInt().coerceAtLeast(1)
-        return ceil(totalCount.toDouble() / rows).toInt().coerceAtLeast(1)
+        val cap = maxOf(1, maxCols)
+        return minOf(totalCount, cap)
     }
 
     fun buildChipSection(
