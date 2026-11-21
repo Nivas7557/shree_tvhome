@@ -8,6 +8,8 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import shree.tvhome.core.DynamicSectionBuilder
+import shree.tvhome.core.GlassSurfaceSpec
 import shree.tvhome.source.LauncherPreferences
 import shree.tvhome.source.LauncherUtils
 import shree.tvhome.source.MotionEngine
