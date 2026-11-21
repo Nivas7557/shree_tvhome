@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Matrix
+import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
@@ -17,6 +18,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -29,7 +32,7 @@ class GreetingShineCard(
     initialName: String,
     initialPhrase: String,
     private var accentColor: Int,
-    private val avatarSizePx: Int = LauncherUtils.dp(context, 32)
+    private val avatarSizePx: Int = LauncherUtils.dp(context, 58)
 ) : FrameLayout(context) {
 
     private val titleView = TextView(context)
@@ -38,46 +41,89 @@ class GreetingShineCard(
     private val avatarLetterView = TextView(context)
     private val avatarBadge = FrameLayout(context)
 
-    private var shimmerX = 0f
-    private var shimmerAnim: ValueAnimator? = null
-    private val shaderMatrix = Matrix()
-    private val clipRect = RectF()
-    private val clipPath = Path()
+    private val greetingPill = object : LinearLayout(context) {
+        private var shimmerX = 0f
+        private var shimmerAnim: ValueAnimator? = null
+        private val shaderMatrix = Matrix()
+        private val clipRect = RectF()
+        private val clipPath = Path()
+        private val shimmerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP)
+        }
 
-    private val shimmerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP)
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            if (w <= 0 || h <= 0) return
+            val r = h * 0.5f
+            clipRect.set(0f, 0f, w.toFloat(), h.toFloat())
+            clipPath.reset()
+            clipPath.addRoundRect(clipRect, r, r, Path.Direction.CW)
+
+            shimmerPaint.shader = LinearGradient(
+                0f, 0f, w * 0.35f, h * 0.4f,
+                intArrayOf(Color.TRANSPARENT, Color.argb(45, 255, 255, 255), Color.TRANSPARENT),
+                floatArrayOf(0f, 0.5f, 1f),
+                Shader.TileMode.CLAMP
+            )
+            shimmerAnim?.cancel()
+            shimmerAnim = ValueAnimator.ofFloat(-w * 0.4f, w * 1.35f).apply {
+                duration = 3400L
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    shimmerX = it.animatedValue as Float
+                    invalidate()
+                }
+                start()
+            }
+        }
+
+        override fun dispatchDraw(canvas: Canvas) {
+            if (width <= 0 || height <= 0) {
+                super.dispatchDraw(canvas)
+                return
+            }
+            val r = height * 0.5f
+            clipRect.set(0f, 0f, width.toFloat(), height.toFloat())
+            clipPath.reset()
+            clipPath.addRoundRect(clipRect, r, r, Path.Direction.CW)
+
+            canvas.save()
+            canvas.clipPath(clipPath)
+            super.dispatchDraw(canvas)
+            shimmerPaint.shader?.let { shader ->
+                shaderMatrix.setTranslate(shimmerX, 0f)
+                shader.setLocalMatrix(shaderMatrix)
+                canvas.drawRect(clipRect, shimmerPaint)
+            }
+            canvas.restore()
+        }
+
+        override fun onDetachedFromWindow() {
+            super.onDetachedFromWindow()
+            shimmerAnim?.cancel()
+        }
     }
 
     init {
-        clipChildren = true
+        clipChildren = false
         clipToPadding = false
-        val innerGap = LauncherUtils.dp(context, 10)
-        val vPad = LauncherUtils.dp(context, 4)
-        val hPad = LauncherUtils.dp(context, 6)
-        setPadding(hPad, vPad, LauncherUtils.dp(context, 16), vPad)
 
-        val row = LinearLayout(context).apply {
+        val pillHeightPx = (avatarSizePx * 0.58f).toInt().coerceAtLeast(LauncherUtils.dp(context, 32))
+        val sproutOverlapPx = (avatarSizePx * 0.30f).toInt()
+        val pillStartOffsetPx = avatarSizePx - sproutOverlapPx
+
+        // 1. Greeting pill emerging from the vertical center of the big circular DP
+        greetingPill.apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            clipChildren = false
-            clipToPadding = false
+            setPadding(
+                sproutOverlapPx + LauncherUtils.dp(context, 10),
+                LauncherUtils.dp(context, 3),
+                LauncherUtils.dp(context, 16),
+                LauncherUtils.dp(context, 3)
+            )
         }
-
-        avatarBadge.background = buildAvatarBadgeDrawable()
-
-        avatarView.scaleType = ImageView.ScaleType.CENTER_CROP
-        avatarLetterView.apply {
-            text = resolveInitial(initialName)
-            textSize = 12f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-        }
-
-        avatarBadge.addView(avatarView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        avatarBadge.addView(avatarLetterView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-
-        row.addView(avatarBadge, LinearLayout.LayoutParams(avatarSizePx, avatarSizePx))
 
         val textColumn = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -92,23 +138,51 @@ class GreetingShineCard(
             maxLines = 1
         }
         subView.apply {
-            textSize = 9f
-            setTextColor(Color.argb(215, 225, 238, 255))
+            textSize = 8.8f
+            setTextColor(Color.argb(220, 225, 238, 255))
             isSingleLine = true
             maxLines = 1
         }
 
         textColumn.addView(titleView)
         textColumn.addView(subView)
+        greetingPill.addView(textColumn)
 
-        row.addView(
-            textColumn,
-            LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = innerGap
+        addView(
+            greetingPill,
+            LayoutParams(LayoutParams.WRAP_CONTENT, pillHeightPx, Gravity.START or Gravity.CENTER_VERTICAL).apply {
+                leftMargin = pillStartOffsetPx
             }
         )
 
-        addView(row, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+        // 2. Large circular DP on top-left so the greeting pill sprouts out from its vertical center
+        avatarBadge.apply {
+            background = buildAvatarBadgeDrawable()
+            elevation = LauncherUtils.dpF(context, 4f)
+            clipToOutline = true
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    outline.setOval(0, 0, view.width, view.height)
+                }
+            }
+        }
+
+        avatarView.scaleType = ImageView.ScaleType.CENTER_CROP
+        avatarLetterView.apply {
+            text = resolveInitial(initialName)
+            textSize = 19f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+        }
+
+        avatarBadge.addView(avatarView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        avatarBadge.addView(avatarLetterView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+
+        addView(
+            avatarBadge,
+            LayoutParams(avatarSizePx, avatarSizePx, Gravity.START or Gravity.CENTER_VERTICAL)
+        )
 
         applySurfaceStyle(focused = false)
         updateGreeting(initialName, initialPhrase)
@@ -119,25 +193,34 @@ class GreetingShineCard(
 
     private fun buildAvatarBadgeDrawable(): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
-        setColor(LauncherUtils.withAlpha(accentColor, 210))
-        setStroke(LauncherUtils.dp(context, 1), Color.argb(180, 255, 255, 255))
+        setColor(LauncherUtils.withAlpha(accentColor, 235))
+        setStroke(LauncherUtils.dp(context, 2), Color.argb(220, 255, 255, 255))
     }
 
     private fun applySurfaceStyle(focused: Boolean) {
-        background = GlassSurfaceSpec.createDrawable(
+        greetingPill.background = GlassSurfaceSpec.createDrawable(
             ctx = context,
             style = GlassSurfaceSpec.GREETING_CARD,
             accentColor = accentColor,
             focused = focused,
             active = true,
             orientation = GradientDrawable.Orientation.LEFT_RIGHT
-        )
+        ).apply {
+            cornerRadius = LauncherUtils.dpF(context, 20f)
+        }
+        avatarBadge.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(LauncherUtils.withAlpha(accentColor, if (focused) 255 else 235))
+            setStroke(
+                LauncherUtils.dp(context, if (focused) 3 else 2),
+                if (focused) Color.WHITE else Color.argb(215, 255, 255, 255)
+            )
+        }
     }
 
     fun setAccentColor(accent: Int) {
         accentColor = accent
         applySurfaceStyle(isFocused)
-        avatarBadge.background = buildAvatarBadgeDrawable()
         invalidate()
     }
 
@@ -164,58 +247,5 @@ class GreetingShineCard(
     override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
         applySurfaceStyle(gainFocus)
-    }
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        if (w <= 0 || h <= 0) return
-
-        val radius = LauncherUtils.dpF(context, GlassSurfaceSpec.GREETING_CARD.radiusDp)
-        clipRect.set(0f, 0f, w.toFloat(), h.toFloat())
-        clipPath.reset()
-        clipPath.addRoundRect(clipRect, radius, radius, Path.Direction.CW)
-
-        shimmerPaint.shader = LinearGradient(
-            0f, 0f, w * 0.35f, h * 0.4f,
-            intArrayOf(Color.TRANSPARENT, Color.argb(42, 255, 255, 255), Color.TRANSPARENT),
-            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP
-        )
-        shimmerAnim?.cancel()
-        shimmerAnim = ValueAnimator.ofFloat(-w * 0.4f, w * 1.35f).apply {
-            duration = 3400L
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = LinearInterpolator()
-            addUpdateListener {
-                shimmerX = it.animatedValue as Float
-                invalidate()
-            }
-            start()
-        }
-    }
-
-    override fun dispatchDraw(canvas: Canvas) {
-        if (width <= 0 || height <= 0) {
-            super.dispatchDraw(canvas)
-            return
-        }
-        val radius = LauncherUtils.dpF(context, GlassSurfaceSpec.GREETING_CARD.radiusDp)
-        clipRect.set(0f, 0f, width.toFloat(), height.toFloat())
-        clipPath.reset()
-        clipPath.addRoundRect(clipRect, radius, radius, Path.Direction.CW)
-
-        canvas.save()
-        canvas.clipPath(clipPath)
-        super.dispatchDraw(canvas)
-        shimmerPaint.shader?.let { shader ->
-            shaderMatrix.setTranslate(shimmerX, 0f)
-            shader.setLocalMatrix(shaderMatrix)
-            canvas.drawRect(clipRect, shimmerPaint)
-        }
-        canvas.restore()
-    }
-
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        shimmerAnim?.cancel()
     }
 }
