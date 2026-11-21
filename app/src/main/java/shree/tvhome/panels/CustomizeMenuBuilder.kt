@@ -136,7 +136,7 @@ object CustomizeMenuBuilder {
                     isClickable = true
                     background = chipBg(ctx, lp.accentColor, isSel)
                     setOnFocusChangeListener { v, f ->
-                        MotionEngine.animateFocus(v, f, lp.motionStyle, 1.05f, 4f)
+                        MotionEngine.animateFocus(v, f, lp.motionStyle, 1.02f, 2f)
                         v.background = chipBg(ctx, lp.accentColor, f || lp.motionStyle == spec.key)
                     }
                     setOnClickListener {
