@@ -111,8 +111,8 @@ class SideControlDrawer(
         val minStageW = LauncherUtils.dp(context, TileThemePalette.PANEL_MIN_WIDTH_DP)
         val dynamicDrawerW = maxOf(minStageW, (screenW * (lp.panelWidthPct / 100f)).toInt())
         drawerLayout.layoutParams.width = dynamicDrawerW
-        drawerLayout.clipChildren = false
-        drawerLayout.clipToPadding = false
+        drawerLayout.clipChildren = true
+        drawerLayout.clipToPadding = true
         drawerLayout.requestLayout()
 
         drawerLayout.background = GradientDrawable(
