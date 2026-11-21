@@ -9,33 +9,11 @@ import shree.tvhome.panels.CustomizeMenuBuilder
 
 object FocusTrap {
 
-    fun findFirstFocusable(root: View): View? {
-        if (root.visibility != View.VISIBLE || !root.isEnabled) return null
-        val isLeafFocusable = root !is ViewGroup && (root.isFocusable || root.isClickable)
-        val isContainerFocusable = root is ViewGroup && root.isFocusable && !root.isFocusableInTouchMode && root.childCount == 0
-        if (isLeafFocusable || isContainerFocusable) {
-            return root
-        }
-        if (root is ViewGroup) {
-            for (i in 0 until root.childCount) {
-                val found = findFirstFocusable(root.getChildAt(i))
-                if (found != null) return found
-            }
-        }
-        return null
-    }
-
-    fun focusFirstInPanel(panel: ViewGroup?, fallbackContainer: ViewGroup? = null): Boolean {
-        if (panel != null && panel.findFocus() != null) return true
-        val target = (panel?.let { findFirstFocusable(it) })
-            ?: (fallbackContainer?.let { findFirstFocusable(it) })
-            ?: return false
-        target.post {
-            if (target.isAttachedToWindow && target.visibility == View.VISIBLE) {
-                target.requestFocus()
-            }
-        }
-        return true
+    fun prepareNaturalFocus(container: ViewGroup?) {
+        container ?: return
+        container.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        container.isFocusable = true
+        container.isFocusableInTouchMode = false
     }
 
     fun handleKeyEvent(
@@ -69,8 +47,8 @@ object FocusTrap {
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     val subRow = current.parent as? ViewGroup ?: return true
                     val dir = if (code == KeyEvent.KEYCODE_DPAD_LEFT) View.FOCUS_LEFT else View.FOCUS_RIGHT
-                    FocusFinder.getInstance().findNextFocus(subRow, current, dir)?.requestFocus()
-                    return true
+                    val nextPill = FocusFinder.getInstance().findNextFocus(subRow, current, dir)
+                    return nextPill != null
                 }
                 if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
                     CustomizeMenuBuilder.closeSubMenuAndNavigate(code == KeyEvent.KEYCODE_DPAD_DOWN)
@@ -80,8 +58,11 @@ object FocusTrap {
         }
 
         if (code == KeyEvent.KEYCODE_DPAD_DOWN && !inDrawer && current != null) {
-            focusFirstInPanel(activePanel, drawerLayout)
-            return true
+            val targetPanel = activePanel ?: drawerLayout
+            targetPanel.descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
+            val firstInPanel = FocusFinder.getInstance().findNextFocus(targetPanel, null, View.FOCUS_DOWN)
+            targetPanel.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            return firstInPanel == null
         }
 
         val container = if (inDrawer) drawerLayout else topNavBar
@@ -94,22 +75,18 @@ object FocusTrap {
             }
             val next = FocusFinder.getInstance().findNextFocus(container, current, dir)
             if (next != null) {
-                next.requestFocus()
-                return true
+                return false
             }
 
             if (inDrawer && code == KeyEvent.KEYCODE_DPAD_UP) {
                 val parentBtn = if (activeParentTag.isNotEmpty()) {
                     topNavBar.findViewWithTag<View>(activeParentTag)
                 } else null
-                val fallbackNav = topNavBar.findFocus() ?: topNavBar.getChildAt(0)
-                val targetNav = parentBtn ?: fallbackNav
-                targetNav?.post { targetNav.requestFocus() }
-                return true
+                return parentBtn == null
             }
             return true
         }
 
-        return focusFirstInPanel(activePanel, drawerLayout)
+        return false
     }
 }
