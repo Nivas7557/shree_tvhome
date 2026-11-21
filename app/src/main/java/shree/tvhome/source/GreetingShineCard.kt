@@ -12,95 +12,158 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.text.TextUtils
 import android.view.Gravity
 import android.view.animation.LinearInterpolator
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import shree.tvhome.core.GlassSurfaceSpec
-import java.util.Calendar
 
 class GreetingShineCard(
-    ctx: Context,
-    private var userName: String,
-    private var customPhrase: String,
-    private var accentColor: Int
-) : LinearLayout(ctx) {
+    context: Context,
+    initialName: String,
+    initialPhrase: String,
+    private var accentColor: Int,
+    private val avatarSizePx: Int = LauncherUtils.dp(context, 32)
+) : FrameLayout(context) {
 
-    private data class GreetingPeriodSpec(val hours: IntRange, val emoji: String, val label: String)
+    private val titleView = TextView(context)
+    private val subView = TextView(context)
+    private val avatarView = ImageView(context)
+    private val avatarLetterView = TextView(context)
 
-    private val greetingPeriods = listOf(
-        GreetingPeriodSpec(5..11, "☀️", "Good Morning"),
-        GreetingPeriodSpec(12..16, "🌤️", "Good Afternoon"),
-        GreetingPeriodSpec(17..20, "🌆", "Good Evening")
-    )
-
-    private val iconTv = TextView(ctx)
-    private val titleTv = TextView(ctx)
-    private var overlayBubble: TextView? = null
+    private var shimmerX = 0f
     private var shimmerAnim: ValueAnimator? = null
-    private var shimmerX = -200f
-    private val shimmerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shaderMatrix = Matrix()
-    private val clipPath = Path()
     private val clipRect = RectF()
+    private val clipPath = Path()
+
+    private val shimmerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP)
+    }
 
     init {
-        orientation = HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        outlineProvider = null
-        setPadding(dp(14), dp(7), dp(16), dp(7))
+        clipChildren = true
+        clipToPadding = false
+        val innerGap = LauncherUtils.dp(context, 10)
+        val vPad = LauncherUtils.dp(context, 4)
+        val hPad = LauncherUtils.dp(context, 6)
+        setPadding(hPad, vPad, LauncherUtils.dp(context, 16), vPad)
 
-        iconTv.apply {
-            textSize = 15f
-            setPadding(0, 0, dp(8), 0)
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            clipChildren = false
+            clipToPadding = false
         }
-        titleTv.apply {
-            textSize = 12.5f
+
+        val avatarBadge = FrameLayout(context).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(LauncherUtils.withAlpha(accentColor, 210))
+                setStroke(LauncherUtils.dp(context, 1), Color.argb(180, 255, 255, 255))
+            }
+        }
+
+        avatarView.scaleType = ImageView.ScaleType.CENTER_CROP
+        avatarLetterView.apply {
+            text = initialName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "S"
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+        }
+
+        avatarBadge.addView(avatarView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        avatarBadge.addView(avatarLetterView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+
+        row.addView(avatarBadge, LinearLayout.LayoutParams(avatarSizePx, avatarSizePx))
+
+        val textColumn = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        titleView.apply {
+            textSize = 11.5f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             isSingleLine = true
-            ellipsize = TextUtils.TruncateAt.END
+            maxLines = 1
         }
-        addView(iconTv)
-        addView(titleTv)
-        updateGreeting(userName, customPhrase)
-        setAccentColor(accentColor)
+        subView.apply {
+            textSize = 9f
+            setTextColor(Color.argb(215, 225, 238, 255))
+            isSingleLine = true
+            maxLines = 1
+        }
+
+        textColumn.addView(titleView)
+        textColumn.addView(subView)
+
+        row.addView(
+            textColumn,
+            LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                leftMargin = innerGap
+            }
+        )
+
+        addView(row, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+
+        applySurfaceStyle(focused = false)
+        updateGreeting(initialName, initialPhrase)
     }
 
-    fun attachOverlayBubble(bubble: TextView) {
-        overlayBubble = bubble
-    }
-
-    fun setAccentColor(accent: Int) {
-        accentColor = accent
+    private fun applySurfaceStyle(focused: Boolean) {
         background = GlassSurfaceSpec.createDrawable(
             ctx = context,
             style = GlassSurfaceSpec.GREETING_CARD,
             accentColor = accentColor,
-            focused = false,
+            focused = focused,
             active = true,
             orientation = GradientDrawable.Orientation.LEFT_RIGHT
         )
     }
 
-    fun updateGreeting(name: String, phrase: String) {
-        userName = name
-        customPhrase = phrase
-
-        val hr = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        val matched = greetingPeriods.find { hr in it.hours }
-        val emoji = matched?.emoji ?: "🌙"
-        val autoGreet = matched?.label ?: "Good Night"
-
-        iconTv.text = emoji
-        val cleanName = userName.trim()
-        titleTv.text = when {
-            customPhrase.isNotBlank() && cleanName.isNotEmpty() -> "$customPhrase, $cleanName"
-            customPhrase.isNotBlank() -> customPhrase
-            cleanName.isNotEmpty() -> "$autoGreet, $cleanName"
-            else -> autoGreet
+    fun setAccentColor(accent: Int) {
+        accentColor = accent
+        applySurfaceStyle(isFocused)
+        (avatarView.parent as? FrameLayout)?.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(LauncherUtils.withAlpha(accentColor, 210))
+            setStroke(LauncherUtils.dp(context, 1), Color.argb(180, 255, 255, 255))
         }
+        invalidate()
+    }
+
+    fun setAvatarDrawable(drawable: android.graphics.drawable.Drawable?) {
+        if (drawable != null) {
+            avatarView.setImageDrawable(drawable)
+            avatarView.visibility = VISIBLE
+            avatarLetterView.visibility = GONE
+        } else {
+            avatarView.setImageDrawable(null)
+            avatarView.visibility = GONE
+            avatarLetterView.visibility = VISIBLE
+        }
+    }
+
+    fun updateGreeting(name: String, phrase: String) {
+        val cleanName = name.ifBlank { "Shree" }
+        val cleanPhrase = phrase.ifBlank { "Welcome back" }
+        avatarLetterView.text = cleanName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "S"
+        titleView.text = "$cleanPhrase, $cleanName"
+        subView.text = cleanPhrase
+    }
+
+    fun attachOverlayBubble(bubble: TextView) {
+        // Unified container handles visual styling cleanly without detached overlay drift
+    }
+
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        applySurfaceStyle(gainFocus)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -119,8 +182,13 @@ class GreetingShineCard(
         )
         shimmerAnim?.cancel()
         shimmerAnim = ValueAnimator.ofFloat(-w * 0.4f, w * 1.35f).apply {
-            duration = 3400L; repeatCount = ValueAnimator.INFINITE; interpolator = LinearInterpolator()
-            addUpdateListener { shimmerX = it.animatedValue as Float; invalidate() }
+            duration = 3400L
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = LinearInterpolator()
+            addUpdateListener {
+                shimmerX = it.animatedValue as Float
+                invalidate()
+            }
             start()
         }
     }
@@ -130,7 +198,6 @@ class GreetingShineCard(
             super.dispatchDraw(canvas)
             return
         }
-        
         val radius = LauncherUtils.dpF(context, GlassSurfaceSpec.GREETING_CARD.radiusDp)
         clipRect.set(0f, 0f, width.toFloat(), height.toFloat())
         clipPath.reset()
@@ -147,6 +214,8 @@ class GreetingShineCard(
         canvas.restore()
     }
 
-    override fun onDetachedFromWindow() { super.onDetachedFromWindow(); shimmerAnim?.cancel() }
-    private fun dp(v: Int) = LauncherUtils.dp(context, v)
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        shimmerAnim?.cancel()
+    }
 }
