@@ -73,13 +73,14 @@ class GreetingShineCard(
 
     fun setAccentColor(accent: Int) {
         accentColor = accent
-        background = GradientDrawable(
-            GradientDrawable.Orientation.LEFT_RIGHT,
-            intArrayOf(LauncherUtils.withAlpha(accentColor, 115), Color.argb(85, 22, 34, 72))
-        ).apply {
-            cornerRadius = LauncherUtils.dpF(context, 20f)
-            setStroke(dp(1), Color.argb(115, 255, 255, 255))
-        }
+        background = GlassSurfaceSpec.createDrawable(
+            ctx = context,
+            style = GlassSurfaceSpec.GREETING_CARD,
+            accentColor = accentColor,
+            focused = false,
+            active = true,
+            orientation = GradientDrawable.Orientation.LEFT_RIGHT
+        )
     }
 
     fun updateGreeting(name: String, phrase: String) {
