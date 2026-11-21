@@ -35,24 +35,13 @@ class LauncherPreferences(context: Context) {
             ?: TileThemePalette.ACCENTS.first().label
         set(value) = prefs.edit().putString(PREF_ACCENT_NAME, value).apply()
 
-    var tileSize: String
-        get() = prefs.getString(PREF_TILE_SIZE, TileThemePalette.getTileSizeSpec("medium").key)
-            ?: TileThemePalette.getTileSizeSpec("medium").key
-        set(value) = prefs.edit().putString(PREF_TILE_SIZE, value).apply()
-
-    var tileShape: String
-        get() = prefs.getString(PREF_TILE_SHAPE, TileThemePalette.TILE_SHAPES.first().key)
-            ?: TileThemePalette.TILE_SHAPES.first().key
-        set(value) = prefs.edit().putString(PREF_TILE_SHAPE, value).apply()
-
-    var tileColor: String
-        get() = prefs.getString(PREF_TILE_COLOR, TileThemePalette.THEMES.first().key)
-            ?: TileThemePalette.THEMES.first().key
-        set(value) = prefs.edit().putString(PREF_TILE_COLOR, value).apply()
-
     var badgeMode: String
-        get() = prefs.getString(PREF_BADGE, TileThemePalette.BADGE_MODES.first().key)
-            ?: TileThemePalette.BADGE_MODES.first().key
+        get() {
+            val stored = prefs.getString(PREF_BADGE, null)
+            val valid = TileThemePalette.BADGE_MODES.find { it.key == stored }
+                ?: TileThemePalette.BADGE_MODES.firstOrNull()
+            return valid?.key ?: "none"
+        }
         set(value) = prefs.edit().putString(PREF_BADGE, value).apply()
 
     var columns: Int
