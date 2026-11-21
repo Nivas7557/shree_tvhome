@@ -116,8 +116,6 @@ object TileThemePalette {
 
     val BADGE_MODES = listOf(
         OptionSpec("accent", "● Dot"),
-        OptionSpec("heart", "♥ Heart"),
-        OptionSpec("star", "★ Star"),
         OptionSpec("none", "Off")
     )
 
