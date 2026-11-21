@@ -301,6 +301,15 @@ class MainActivity : Activity() {
         rootLayout.addView(nudgeView, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { topMargin = dp(52); leftMargin = dp(235) })
         setContentView(rootLayout)
         syncAppGrid(allowFocusRestore = false)
+        
+        rootLayout.post {
+            if (!::sideDrawer.isInitialized || !sideDrawer.isOpen) {
+                val firstFav = favRow.getChildAt(0)
+                val firstGrid = appGrid.findViewWithTag<shree.tvhome.design.FluidAppGrid>("fluid_engine")?.getChildAt(0)
+                val firstAppTile = if (favSection.visibility == View.VISIBLE && firstFav != null) firstFav else firstGrid
+                firstAppTile?.requestFocus()
+            }
+        }
     }
 
     private fun openHiddenRibbon() {
