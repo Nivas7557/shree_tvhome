@@ -136,7 +136,7 @@ class SideControlDrawer(
             MotionEngine.resetTransform(drawerLayout)
             MotionEngine.animatePanelEnter(drawerLayout, stageWidget, dynamicDrawerW, lp.motionStyle) {}
         } else {
-            activePanel?.let { MotionEngine.playDemoPreview(it, lp.motionStyle) }
+            MotionEngine.playDemoPreview(drawerLayout, lp.motionStyle)
         }
     }
 
