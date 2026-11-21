@@ -9,7 +9,6 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import shree.tvhome.core.DynamicSectionBuilder
-import shree.tvhome.core.GlassSurfaceSpec
 import shree.tvhome.source.LauncherPreferences
 import shree.tvhome.source.LauncherUtils
 import shree.tvhome.source.MotionEngine
@@ -64,9 +63,10 @@ object CustomizeMenuBuilder {
         }
 
         val actionHeightPx = dp(ctx, 52)
-        val chipHeightPx = dp(ctx, 34)
+        val chipHeightPx = 34
         val swatchHeightPx = dp(ctx, 32)
-        val gapPx = dp(ctx, 6)
+        val gapDp = 6
+        val gapPx = dp(ctx, gapDp)
 
         addHeader(ctx, panel, "ACCOUNT & VISIBILITY")
         val topRow = LinearLayout(ctx).apply {
@@ -99,16 +99,16 @@ object CustomizeMenuBuilder {
             onOpenWallpaper()
         }
 
-        // 1. TILE SIZE (Purely driven from TileThemePalette.TILE_SIZES)
         if (TileThemePalette.TILE_SIZES.isNotEmpty()) {
-            addHeader(ctx, panel, "TILE SIZE")
-            addDynamicOptionSection(
+            DynamicSectionBuilder.buildChipSection(
                 ctx = ctx,
                 panel = panel,
                 lp = lp,
+                headerTitle = "TILE SIZE",
                 items = TileThemePalette.TILE_SIZES.map { it.key to it.label },
-                chipHeightPx = chipHeightPx,
-                gapPx = gapPx,
+                maxCols = 4,
+                chipHeightDp = chipHeightPx,
+                gapDp = gapDp,
                 syncListeners = liveSyncListeners,
                 getSelectedKey = { lp.tileSize },
                 onSelectKey = { key ->
@@ -118,36 +118,35 @@ object CustomizeMenuBuilder {
             )
         }
 
-        // 2. STAGE & PANEL WIDTH (Purely driven from TileThemePalette.PANEL_WIDTH_OPTIONS)
         if (TileThemePalette.PANEL_WIDTH_OPTIONS.isNotEmpty()) {
-            addHeader(ctx, panel, "STAGE & PANEL WIDTH")
-            addDynamicOptionSection(
+            DynamicSectionBuilder.buildChipSection(
                 ctx = ctx,
                 panel = panel,
                 lp = lp,
+                headerTitle = "STAGE & PANEL WIDTH",
                 items = TileThemePalette.PANEL_WIDTH_OPTIONS.map { pct -> pct.toString() to "$pct%" },
-                chipHeightPx = chipHeightPx,
-                gapPx = gapPx,
+                maxCols = 4,
+                chipHeightDp = chipHeightPx,
+                gapDp = gapDp,
                 syncListeners = liveSyncListeners,
                 getSelectedKey = { lp.panelWidthPct.toString() },
                 onSelectKey = { key ->
-                    val parsed = key.toIntOrNull() ?: TileThemePalette.PANEL_WIDTH_OPTIONS.first()
-                    lp.panelWidthPct = parsed
+                    lp.panelWidthPct = key.toIntOrNull() ?: TileThemePalette.PANEL_WIDTH_OPTIONS.first()
                     triggerInstantSync()
                 }
             )
         }
 
-        // 3. ICON SHAPE (Purely driven from TileThemePalette.TILE_SHAPES)
         if (TileThemePalette.TILE_SHAPES.isNotEmpty()) {
-            addHeader(ctx, panel, "ICON SHAPE")
-            addDynamicOptionSection(
+            DynamicSectionBuilder.buildChipSection(
                 ctx = ctx,
                 panel = panel,
                 lp = lp,
+                headerTitle = "ICON SHAPE",
                 items = TileThemePalette.TILE_SHAPES.map { it.key to it.label },
-                chipHeightPx = chipHeightPx,
-                gapPx = gapPx,
+                maxCols = 4,
+                chipHeightDp = chipHeightPx,
+                gapDp = gapDp,
                 syncListeners = liveSyncListeners,
                 getSelectedKey = { lp.tileShape },
                 onSelectKey = { key ->
@@ -157,11 +156,10 @@ object CustomizeMenuBuilder {
             )
         }
 
-        // 4. GLOBAL MOTION STYLE (Purely driven from MotionEngine.STYLES)
         if (MotionEngine.STYLES.isNotEmpty()) {
             addHeader(ctx, panel, "GLOBAL MOTION STYLE (TAP TO PREVIEW)")
             val motionButtons = ArrayList<Pair<String, TextView>>()
-            val colsPerRow = computeDynamicColumns(MotionEngine.STYLES.size, maxCols = 4)
+            val colsPerRow = DynamicSectionBuilder.computeOptimalColumns(MotionEngine.STYLES.size, maxCols = 4)
             MotionEngine.STYLES.chunked(colsPerRow).forEach { rowChunk ->
                 val r = LinearLayout(ctx).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -192,7 +190,7 @@ object CustomizeMenuBuilder {
                     motionButtons.add(spec.key to btn)
                     r.addView(
                         btn,
-                        LinearLayout.LayoutParams(0, chipHeightPx, 1f).apply {
+                        LinearLayout.LayoutParams(0, dp(ctx, chipHeightPx), 1f).apply {
                             if (idx < rowChunk.lastIndex) rightMargin = gapPx
                         }
                     )
@@ -206,11 +204,10 @@ object CustomizeMenuBuilder {
             }
         }
 
-        // 5. ACCENT AURA (Purely driven from TileThemePalette.ACCENTS)
         if (TileThemePalette.ACCENTS.isNotEmpty()) {
             addHeader(ctx, panel, "ACCENT AURA")
             val swatchViews = ArrayList<Pair<Int, View>>()
-            val rowCap = 4
+            val rowCap = DynamicSectionBuilder.computeOptimalColumns(TileThemePalette.ACCENTS.size, maxCols = 4)
             TileThemePalette.ACCENTS.chunked(rowCap).forEach { accentChunk ->
                 val swatchRow = LinearLayout(ctx).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -248,20 +245,18 @@ object CustomizeMenuBuilder {
                     v.background = swatchChipBg(ctx, c, v.hasFocus() || c == lp.accentColor)
                 }
             }
-            
-        // 6. TILE GLASS PALETTE (Purely driven from TileThemePalette.THEMES)
+        }
+
         if (TileThemePalette.THEMES.isNotEmpty()) {
-            addHeader(ctx, panel, "TILE GLASS PALETTE")
-            val themeItems = TileThemePalette.THEMES.map { spec ->
-                spec.key to spec.name.substringBefore(" ")
-            }
-            addDynamicOptionSection(
+            DynamicSectionBuilder.buildChipSection(
                 ctx = ctx,
                 panel = panel,
                 lp = lp,
-                items = themeItems,
-                chipHeightPx = chipHeightPx,
-                gapPx = gapPx,
+                headerTitle = "TILE GLASS PALETTE",
+                items = TileThemePalette.THEMES.map { spec -> spec.key to spec.name.substringBefore(" ") },
+                maxCols = 4,
+                chipHeightDp = chipHeightPx,
+                gapDp = gapDp,
                 syncListeners = liveSyncListeners,
                 getSelectedKey = { lp.tileColor },
                 onSelectKey = { key ->
@@ -271,16 +266,16 @@ object CustomizeMenuBuilder {
             )
         }
 
-        // 7. FAVORITE BADGE STYLE (Purely driven from TileThemePalette.BADGE_MODES)
         if (TileThemePalette.BADGE_MODES.isNotEmpty()) {
-            addHeader(ctx, panel, "FAVORITE BADGE")
-            addDynamicOptionSection(
+            DynamicSectionBuilder.buildChipSection(
                 ctx = ctx,
                 panel = panel,
                 lp = lp,
+                headerTitle = "FAVORITE BADGE",
                 items = TileThemePalette.BADGE_MODES.map { it.key to it.label },
-                chipHeightPx = chipHeightPx,
-                gapPx = gapPx,
+                maxCols = 4,
+                chipHeightDp = chipHeightPx,
+                gapDp = gapDp,
                 syncListeners = liveSyncListeners,
                 getSelectedKey = { lp.badgeMode },
                 onSelectKey = { key ->
@@ -291,101 +286,49 @@ object CustomizeMenuBuilder {
         }
     }
 
-    private fun computeDynamicColumns(totalCount: Int, maxCols: Int): Int {
-        if (totalCount <= 0) return 1
-        if (totalCount <= maxCols) return totalCount
-        val rows = kotlin.math.ceil(totalCount.toDouble() / maxCols).toInt().coerceAtLeast(1)
-        return kotlin.math.ceil(totalCount.toDouble() / rows).toInt().coerceAtLeast(1)
+    private fun makeActionTile(
+        ctx: Context,
+        lp: LauncherPreferences,
+        icon: String,
+        title: String,
+        sub: String,
+        onClick: () -> Unit
+    ) = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(ctx, 10), dp(ctx, 6), dp(ctx, 10), dp(ctx, 6))
+        isFocusable = true
+        isClickable = true
+        background = chipBg(ctx, lp.accentColor, false)
+        setOnFocusChangeListener { v, f ->
+            MotionEngine.animateFocus(v, f, lp.motionStyle, 1.02f, 2f)
+            v.background = chipBg(ctx, lp.accentColor, f)
+        }
+        setOnClickListener { onClick() }
+        addView(TextView(ctx).apply {
+            text = "$icon$title"
+            textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            isSingleLine = true
+        })
+        addView(TextView(ctx).apply {
+            text = sub
+            textSize = 8.2f
+            setTextColor(lp.accentColor)
+            isSingleLine = true
+        })
     }
 
-    private fun addDynamicOptionSection(
+    private fun addActionCard(
         ctx: Context,
         panel: LinearLayout,
         lp: LauncherPreferences,
-        items: List<Pair<String, String>>,
-        chipHeightPx: Int,
-        gapPx: Int,
-        syncListeners: MutableList<() -> Unit>,
-        getSelectedKey: () -> String,
-        onSelectKey: (String) -> Unit
+        icon: String,
+        title: String,
+        sub: String,
+        onClick: () -> Unit
     ) {
-        if (items.isEmpty()) return
-        val colsPerRow = computeDynamicColumns(items.size, maxCols = 4)
-        val allChips = ArrayList<Pair<String, TextView>>()
-
-        items.chunked(colsPerRow).forEach { rowChunk ->
-            val row = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                clipChildren = false
-                clipToPadding = false
-            }
-            rowChunk.forEachIndexed { idx, (key, label) ->
-                val chip = TextView(ctx).apply {
-                    text = label
-                    textSize = 9.5f
-                    typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                    isSingleLine = true
-                    isFocusable = true
-                    isClickable = true
-                    background = chipBg(ctx, lp.accentColor, getSelectedKey() == key)
-                    setOnFocusChangeListener { v, f ->
-                        MotionEngine.animateFocus(v, f, lp.motionStyle, 1.02f, 2f)
-                        v.background = chipBg(ctx, lp.accentColor, f || getSelectedKey() == key)
-                    }
-                    setOnClickListener {
-                        onSelectKey(key)
-                    }
-                }
-                allChips.add(key to chip)
-                row.addView(
-                    chip,
-                    LinearLayout.LayoutParams(0, chipHeightPx, 1f).apply {
-                        if (idx < rowChunk.lastIndex) rightMargin = gapPx
-                    }
-                )
-            }
-            panel.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapPx })
-        }
-
-        syncListeners.add {
-            val activeKey = getSelectedKey()
-            allChips.forEach { (k, cView) ->
-                cView.background = chipBg(ctx, lp.accentColor, cView.hasFocus() || activeKey == k)
-            }
-        }
-    }
-
-    private fun makeActionTile(ctx: Context, lp: LauncherPreferences, icon: String, title: String, sub: String, onClick: () -> Unit) =
-        LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(ctx, 10), dp(ctx, 6), dp(ctx, 10), dp(ctx, 6))
-            isFocusable = true
-            isClickable = true
-            background = chipBg(ctx, lp.accentColor, false)
-            setOnFocusChangeListener { v, f ->
-                MotionEngine.animateFocus(v, f, lp.motionStyle, 1.02f, 2f)
-                v.background = chipBg(ctx, lp.accentColor, f)
-            }
-            setOnClickListener { onClick() }
-            addView(TextView(ctx).apply {
-                text = "$icon$title"
-                textSize = 10f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.WHITE)
-                isSingleLine = true
-            })
-            addView(TextView(ctx).apply {
-                text = sub
-                textSize = 8.2f
-                setTextColor(lp.accentColor)
-                isSingleLine = true
-            })
-        }
-
-    private fun addActionCard(ctx: Context, panel: LinearLayout, lp: LauncherPreferences, icon: String, title: String, sub: String, onClick: () -> Unit) {
         val card = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -406,10 +349,24 @@ object CustomizeMenuBuilder {
             setPadding(0, 0, dp(ctx, 10), 0)
         })
         val mid = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        mid.addView(TextView(ctx).apply { text = title; textSize = 10.5f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) })
-        mid.addView(TextView(ctx).apply { text = sub; textSize = 8.5f; setTextColor(Color.argb(185, 210, 230, 245)) })
+        mid.addView(TextView(ctx).apply {
+            text = title
+            textSize = 10.5f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        })
+        mid.addView(TextView(ctx).apply {
+            text = sub
+            textSize = 8.5f
+            setTextColor(Color.argb(185, 210, 230, 245))
+        })
         card.addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
-        card.addView(TextView(ctx).apply { text = "›"; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) })
+        card.addView(TextView(ctx).apply {
+            text = "›"
+            textSize = 15f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        })
         panel.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 4) })
     }
 
@@ -423,11 +380,11 @@ object CustomizeMenuBuilder {
     }
 
     private fun swatchChipBg(ctx: Context, col: Int, active: Boolean) = GradientDrawable().apply {
-      shape = GradientDrawable.RECTANGLE
-      setColor(col)
-      cornerRadius = LauncherUtils.dpF(ctx, 10f)
-      setStroke(dp(ctx, if (active) 2 else 1), if (active) Color.WHITE else Color.argb(120, 255, 255, 255))
-  }
+        shape = GradientDrawable.RECTANGLE
+        setColor(col)
+        cornerRadius = LauncherUtils.dpF(ctx, 10f)
+        setStroke(dp(ctx, if (active) 2 else 1), if (active) Color.WHITE else Color.argb(120, 255, 255, 255))
+    }
 
     private fun addHeader(ctx: Context, panel: LinearLayout, label: String) {
         panel.addView(TextView(ctx).apply {
@@ -436,7 +393,10 @@ object CustomizeMenuBuilder {
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.argb(210, 195, 220, 255))
             letterSpacing = 0.08f
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(ctx, 8); bottomMargin = dp(ctx, 4) })
+        }, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(ctx, 8)
+            bottomMargin = dp(ctx, 4)
+        })
     }
 
     private fun dp(ctx: Context, v: Int) = LauncherUtils.dp(ctx, v)
