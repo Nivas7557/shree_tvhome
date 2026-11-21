@@ -209,44 +209,46 @@ object CustomizeMenuBuilder {
         // 5. ACCENT AURA (Purely driven from TileThemePalette.ACCENTS)
         if (TileThemePalette.ACCENTS.isNotEmpty()) {
             addHeader(ctx, panel, "ACCENT AURA")
-            val swatchRow = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                clipChildren = false
-                clipToPadding = false
-            }
             val swatchViews = ArrayList<Pair<Int, View>>()
-            TileThemePalette.ACCENTS.forEachIndexed { idx, spec ->
-                val col = spec.color
-                val dot = View(ctx).apply {
-                    isFocusable = true
-                    isClickable = true
-                    background = swatchBg(ctx, col, lp.accentColor == col)
-                    setOnFocusChangeListener { v, f ->
-                        MotionEngine.animateFocus(v, f, lp.motionStyle, 1.08f, 3f)
-                        v.background = swatchBg(ctx, col, f || lp.accentColor == col)
-                    }
-                    setOnClickListener {
-                        lp.accentColor = col
-                        lp.accentName = spec.label
-                        triggerInstantSync()
-                    }
+            val rowCap = 4
+            TileThemePalette.ACCENTS.chunked(rowCap).forEach { accentChunk ->
+                val swatchRow = LinearLayout(ctx).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    clipChildren = false
+                    clipToPadding = false
                 }
-                swatchViews.add(col to dot)
-                swatchRow.addView(
-                    dot,
-                    LinearLayout.LayoutParams(0, swatchHeightPx, 1f).apply {
-                        if (idx < TileThemePalette.ACCENTS.lastIndex) rightMargin = gapPx
+                accentChunk.forEachIndexed { idx, spec ->
+                    val col = spec.color
+                    val dot = View(ctx).apply {
+                        isFocusable = true
+                        isClickable = true
+                        background = swatchChipBg(ctx, col, lp.accentColor == col)
+                        setOnFocusChangeListener { v, f ->
+                            MotionEngine.animateFocus(v, f, lp.motionStyle, 1.04f, 2f)
+                            v.background = swatchChipBg(ctx, col, f || lp.accentColor == col)
+                        }
+                        setOnClickListener {
+                            lp.accentColor = col
+                            lp.accentName = spec.label
+                            triggerInstantSync()
+                        }
                     }
-                )
+                    swatchViews.add(col to dot)
+                    swatchRow.addView(
+                        dot,
+                        LinearLayout.LayoutParams(0, swatchHeightPx, 1f).apply {
+                            if (idx < accentChunk.lastIndex) rightMargin = gapPx
+                        }
+                    )
+                }
+                panel.addView(swatchRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapPx })
             }
-            panel.addView(swatchRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapPx })
             liveSyncListeners.add {
                 swatchViews.forEach { (c, v) ->
-                    v.background = swatchBg(ctx, c, v.hasFocus() || c == lp.accentColor)
+                    v.background = swatchChipBg(ctx, c, v.hasFocus() || c == lp.accentColor)
                 }
             }
-        }
-
+            
         // 6. TILE GLASS PALETTE (Purely driven from TileThemePalette.THEMES)
         if (TileThemePalette.THEMES.isNotEmpty()) {
             addHeader(ctx, panel, "TILE GLASS PALETTE")
@@ -420,11 +422,12 @@ object CustomizeMenuBuilder {
         setStroke(dp(ctx, if (active) 2 else 1), if (active) Color.WHITE else Color.argb(65, 255, 255, 255))
     }
 
-    private fun swatchBg(ctx: Context, col: Int, active: Boolean) = GradientDrawable().apply {
-        shape = GradientDrawable.OVAL
-        setColor(col)
-        setStroke(dp(ctx, if (active) 3 else 1), if (active) Color.WHITE else Color.argb(110, 255, 255, 255))
-    }
+    private fun swatchChipBg(ctx: Context, col: Int, active: Boolean) = GradientDrawable().apply {
+      shape = GradientDrawable.RECTANGLE
+      setColor(col)
+      cornerRadius = LauncherUtils.dpF(ctx, 10f)
+      setStroke(dp(ctx, if (active) 2 else 1), if (active) Color.WHITE else Color.argb(120, 255, 255, 255))
+  }
 
     private fun addHeader(ctx: Context, panel: LinearLayout, label: String) {
         panel.addView(TextView(ctx).apply {
