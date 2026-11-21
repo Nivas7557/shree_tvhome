@@ -147,13 +147,14 @@ class TopNavBar(
             clipToPadding = false
         }
 
+        val cardGapFromAvatar = dp(8)
         greetingCard = GreetingShineCard(context, lp.userName, lp.greetingPhrase, lp.accentColor).apply {
-            setPadding(avatarSize - dp(6), dp(7), dp(16), dp(7))
+            setPadding(dp(14), dp(7), dp(16), dp(7))
         }
         profileHeroGroup.addView(
             greetingCard,
             FrameLayout.LayoutParams(-2, dp(40), Gravity.START or Gravity.CENTER_VERTICAL).apply {
-                leftMargin = dp(20)
+                leftMargin = avatarSize + cardGapFromAvatar
             }
         )
 
