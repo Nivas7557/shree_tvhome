@@ -94,10 +94,8 @@ object TileThemePalette {
 
     val ACCENTS = listOf(
         AccentSpec("royal", "Royal", Color.rgb(92, 184, 255)),
-        AccentSpec("emerald", "Mint", Color.rgb(46, 232, 138)),
         AccentSpec("magenta", "Pink", Color.rgb(255, 110, 145)),
         AccentSpec("purple", "Purple", Color.rgb(185, 135, 255)),
-        AccentSpec("sunset", "Gold", Color.rgb(255, 195, 75)),
         AccentSpec("cyan", "Aqua", Color.rgb(75, 235, 245))
     )
 
