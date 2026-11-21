@@ -365,6 +365,7 @@ class MainActivity : Activity() {
     private fun applyLiveVisuals() {
         topNavBar.refreshProfileAvatar()
         topNavBar.refreshGreeting()
+        topNavBar.setAccent(lp.accentColor)
         LauncherBackground.updateThemeAndAccent(rootLayout, lp)
 
         val newW = computeRightStageWidth()
