@@ -8,9 +8,13 @@ import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.animation.LinearInterpolator
@@ -32,6 +36,7 @@ class GreetingShineCard(
     private val subView = TextView(context)
     private val avatarView = ImageView(context)
     private val avatarLetterView = TextView(context)
+    private val avatarBadge = FrameLayout(context)
 
     private var shimmerX = 0f
     private var shimmerAnim: ValueAnimator? = null
@@ -40,7 +45,7 @@ class GreetingShineCard(
     private val clipPath = Path()
 
     private val shimmerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP)
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP)
     }
 
     init {
@@ -58,17 +63,11 @@ class GreetingShineCard(
             clipToPadding = false
         }
 
-        val avatarBadge = FrameLayout(context).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(LauncherUtils.withAlpha(accentColor, 210))
-                setStroke(LauncherUtils.dp(context, 1), Color.argb(180, 255, 255, 255))
-            }
-        }
+        avatarBadge.background = buildAvatarBadgeDrawable()
 
         avatarView.scaleType = ImageView.ScaleType.CENTER_CROP
         avatarLetterView.apply {
-            text = initialName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "S"
+            text = resolveInitial(initialName)
             textSize = 12f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
@@ -115,6 +114,15 @@ class GreetingShineCard(
         updateGreeting(initialName, initialPhrase)
     }
 
+    private fun resolveInitial(name: String): String =
+        name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "S"
+
+    private fun buildAvatarBadgeDrawable(): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(LauncherUtils.withAlpha(accentColor, 210))
+        setStroke(LauncherUtils.dp(context, 1), Color.argb(180, 255, 255, 255))
+    }
+
     private fun applySurfaceStyle(focused: Boolean) {
         background = GlassSurfaceSpec.createDrawable(
             ctx = context,
@@ -129,15 +137,11 @@ class GreetingShineCard(
     fun setAccentColor(accent: Int) {
         accentColor = accent
         applySurfaceStyle(isFocused)
-        (avatarView.parent as? FrameLayout)?.background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(LauncherUtils.withAlpha(accentColor, 210))
-            setStroke(LauncherUtils.dp(context, 1), Color.argb(180, 255, 255, 255))
-        }
+        avatarBadge.background = buildAvatarBadgeDrawable()
         invalidate()
     }
 
-    fun setAvatarDrawable(drawable: android.graphics.drawable.Drawable?) {
+    fun setAvatarDrawable(drawable: Drawable?) {
         if (drawable != null) {
             avatarView.setImageDrawable(drawable)
             avatarView.visibility = VISIBLE
@@ -152,16 +156,12 @@ class GreetingShineCard(
     fun updateGreeting(name: String, phrase: String) {
         val cleanName = name.ifBlank { "Shree" }
         val cleanPhrase = phrase.ifBlank { "Welcome back" }
-        avatarLetterView.text = cleanName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "S"
+        avatarLetterView.text = resolveInitial(cleanName)
         titleView.text = "$cleanPhrase, $cleanName"
         subView.text = cleanPhrase
     }
 
-    fun attachOverlayBubble(bubble: TextView) {
-        // Unified container handles visual styling cleanly without detached overlay drift
-    }
-
-    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
         applySurfaceStyle(gainFocus)
     }
