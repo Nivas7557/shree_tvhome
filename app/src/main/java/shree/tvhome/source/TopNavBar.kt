@@ -30,14 +30,18 @@ import java.util.Locale
 class TopNavBar(
     context: Context,
     private val lp: LauncherPreferences,
-    private val onProfileClick: () -> Unit,
-    private val onVoiceClick: () -> Unit,
-    private val onWifiClick: () -> Unit,
-    private val onAlertsClick: () -> Unit,
-    private val onCustomizeClick: () -> Unit,
-    private val onQuickClick: () -> Unit,
-    private val onPowerClick: () -> Unit
+    private val callbacks: NavCallbacks
 ) : FrameLayout(context) {
+
+    interface NavCallbacks {
+        fun onProfileClick()
+        fun onVoiceSearch()
+        fun onWifiClick()
+        fun onAlertsClick()
+        fun onCustomizeClick()
+        fun onQuickSettingsClick()
+        fun onPowerClick()
+    }
 
     private data class NavPillSpec(
         val iconKind: String,
@@ -71,7 +75,7 @@ class TopNavBar(
 
     private val clockTicker = object : Runnable {
         override fun run() {
-            updateClockAndGreeting()
+            refreshGreeting()
             handler.postDelayed(this, 15_000L)
         }
     }
@@ -113,7 +117,7 @@ class TopNavBar(
         ).apply {
             isFocusable = true
             isClickable = true
-            setOnClickListener { onProfileClick() }
+            setOnClickListener { callbacks.onProfileClick() }
             setOnFocusChangeListener { v, hasFocus ->
                 MotionEngine.animateFocus(v, hasFocus, lp.motionStyle, 1.03f, 2f)
             }
@@ -136,12 +140,12 @@ class TopNavBar(
         }
 
         val specs = listOf(
-            NavPillSpec("mic", null, Color.WHITE, "nav_voice", onVoiceClick),
-            NavPillSpec("wifi", "Wi-Fi", Color.WHITE, "nav_wifi", onWifiClick),
-            NavPillSpec("bell", null, Color.WHITE, "nav_alerts", onAlertsClick),
-            NavPillSpec("palette", null, Color.WHITE, "nav_customize", onCustomizeClick),
-            NavPillSpec("sliders", null, Color.WHITE, "nav_quick", onQuickClick),
-            NavPillSpec("power", null, Color.argb(255, 255, 110, 110), "nav_power", onPowerClick)
+            NavPillSpec("mic", null, Color.WHITE, "nav_voice") { callbacks.onVoiceSearch() },
+            NavPillSpec("wifi", "Wi-Fi", Color.WHITE, "nav_wifi") { callbacks.onWifiClick() },
+            NavPillSpec("bell", null, Color.WHITE, "nav_alerts") { callbacks.onAlertsClick() },
+            NavPillSpec("palette", null, Color.WHITE, "nav_customize") { callbacks.onCustomizeClick() },
+            NavPillSpec("sliders", null, Color.WHITE, "nav_quick") { callbacks.onQuickSettingsClick() },
+            NavPillSpec("power", null, Color.argb(255, 255, 110, 110), "nav_power") { callbacks.onPowerClick() }
         )
 
         specs.forEachIndexed { idx, spec ->
@@ -193,6 +197,19 @@ class TopNavBar(
             visibility = GONE
         }
         addView(ramTv)
+    }
+
+    fun createFloatingNudgeView(): TextView = TextView(context).apply {
+        textSize = 9.5f
+        typeface = Typeface.DEFAULT_BOLD
+        setTextColor(Color.WHITE)
+        visibility = GONE
+        setPadding(dp(10), dp(4), dp(10), dp(4))
+        background = GradientDrawable().apply {
+            setColor(Color.argb(225, 20, 32, 66))
+            cornerRadius = LauncherUtils.dpF(context, 12f)
+            setStroke(dp(1), Color.argb(140, 255, 255, 255))
+        }
     }
 
     private fun buildNavPill(spec: NavPillSpec): LinearLayout {
@@ -255,26 +272,37 @@ class TopNavBar(
         return pill
     }
 
-    fun refreshProfile(lp: LauncherPreferences) {
-        greetingCard.updateGreeting(lp.userName, lp.greetingPhrase)
-        val uriStr = lp.profilePhotoUri
+    fun refreshProfileAvatar() {
+        val uriStr = lp.prefs.getString("profile_pic_uri", null)
         if (uriStr.isNullOrBlank()) {
             greetingCard.setAvatarDrawable(null)
-        } else {
-            try {
-                val uri = Uri.parse(uriStr)
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val bmp = BitmapFactory.decodeStream(stream)
-                    if (bmp != null) {
-                        greetingCard.setAvatarDrawable(BitmapDrawable(context.resources, bmp))
-                    } else {
-                        greetingCard.setAvatarDrawable(null)
-                    }
-                }
-            } catch (_: Exception) {
-                greetingCard.setAvatarDrawable(null)
-            }
+            return
         }
+        try {
+            val uri = Uri.parse(uriStr)
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val bmp = BitmapFactory.decodeStream(stream)
+                if (bmp != null) {
+                    greetingCard.setAvatarDrawable(BitmapDrawable(context.resources, bmp))
+                } else {
+                    greetingCard.setAvatarDrawable(null)
+                }
+            }
+        } catch (_: Exception) {
+            greetingCard.setAvatarDrawable(null)
+        }
+    }
+
+    fun refreshGreeting() {
+        val timeFmt = SimpleDateFormat("hh:mm a", Locale.getDefault())
+        val nowTime = timeFmt.format(Date())
+        val basePhrase = lp.greetingPhrase.ifBlank { "Welcome" }
+        greetingCard.updateGreeting(lp.userName, "$basePhrase • $nowTime")
+    }
+
+    fun refreshProfile(pref: LauncherPreferences = lp) {
+        greetingCard.updateGreeting(pref.userName, pref.greetingPhrase)
+        refreshProfileAvatar()
     }
 
     fun setAccent(accent: Int) {
@@ -328,16 +356,9 @@ class TopNavBar(
         if (refreshProfile) {
             refreshProfile(lp)
         }
-        updateClockAndGreeting()
+        refreshGreeting()
         updateWifiStatus()
         startAmbientMotion()
-    }
-
-    private fun updateClockAndGreeting() {
-        val timeFmt = SimpleDateFormat("hh:mm a", Locale.getDefault())
-        val nowTime = timeFmt.format(Date())
-        val basePhrase = lp.greetingPhrase.ifBlank { "Welcome" }
-        greetingCard.updateGreeting(lp.userName, "$basePhrase • $nowTime")
     }
 
     private fun updateWifiStatus() {
@@ -350,7 +371,7 @@ class TopNavBar(
         if (isConnected) {
             wifiStateMode = 2
             handler.removeCallbacks(wifiPulseTicker)
-            val ssid = lp.lastWifiSsid.ifBlank { "Connected" }
+            val ssid = lp.prefs.getString("last_wifi_ssid", null).orEmpty().ifBlank { "Connected" }
             lastShownSsid = ssid
             applyWifiVisuals(connected = true, ssid = ssid)
         } else {
