@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.view.Gravity
@@ -19,8 +20,15 @@ import shree.tvhome.source.LauncherPreferences
 import shree.tvhome.source.LauncherUtils
 import shree.tvhome.source.MotionEngine
 import shree.tvhome.source.TileThemePalette
+import java.util.concurrent.ConcurrentHashMap
 
 object AppTileFactory {
+
+    interface TileActions {
+        fun onToggleFavorite(pkg: String, label: String)
+        fun onMoveFavorite(pkg: String, delta: Int)
+        fun onHideApp(pkg: String, label: String)
+    }
 
     data class TileMetrics(
         val widthPx: Int,
@@ -30,28 +38,46 @@ object AppTileFactory {
         val cornerRadiusDp: Float
     )
 
-    fun resolveMetrics(ctx: Context, lp: LauncherPreferences): TileMetrics {
-        val sizeSpec = TileThemePalette.TILE_SIZES.find { it.key == lp.tileSize }
-            ?: TileThemePalette.TILE_SIZES.find { it.key == "medium" }
-            ?: TileThemePalette.TILE_SIZES.firstOrNull()
+    private val labelCache = ConcurrentHashMap<String, String>()
+    private val iconCache = ConcurrentHashMap<String, Drawable>()
 
-        val baseW = sizeSpec?.widthDp ?: 132
-        val baseH = sizeSpec?.heightDp ?: 112
-        val baseIcon = sizeSpec?.iconDp ?: 42
-        val labelSp = sizeSpec?.labelSp ?: 10.5f
+    fun clearAssetCache() {
+        labelCache.clear()
+        iconCache.clear()
+    }
 
-        val shapeSpec = TileThemePalette.TILE_SHAPES.find { it.key == lp.tileShape }
-        val radiusDp = when (shapeSpec?.key) {
-            "circle", "pill" -> (minOf(baseW, baseH) * 0.45f).coerceAtLeast(16f)
+    fun getCachedLabel(pm: PackageManager, info: ResolveInfo): String {
+        val pkg = info.activityInfo.packageName
+        return labelCache.getOrPut(pkg) {
+            info.loadLabel(pm)?.toString()?.trim().orEmpty().ifEmpty { pkg }
+        }
+    }
+
+    private fun getCachedIcon(pm: PackageManager, info: ResolveInfo): Drawable {
+        val pkg = info.activityInfo.packageName
+        return iconCache.getOrPut(pkg) {
+            info.loadIcon(pm)
+        }
+    }
+
+    fun resolveMetrics(ctx: Context, lp: LauncherPreferences, customW: Int = 0, customH: Int = 0): TileMetrics {
+        val sizeSpec = TileThemePalette.getTileSizeSpec(lp.tileSize)
+        val baseW = if (customW > 0) customW else LauncherUtils.dp(ctx, sizeSpec.desiredGridDp)
+        val baseH = if (customH > 0) customH else (baseW * 0.9f).toInt().coerceAtLeast(LauncherUtils.dp(ctx, 88))
+        val baseIcon = (minOf(baseW, baseH) * 0.44f).toInt().coerceAtLeast(LauncherUtils.dp(ctx, 28))
+        val labelSp = sizeSpec.labelSp
+
+        val radiusDp = when (lp.tileShape) {
+            "circle", "pill" -> (minOf(LauncherUtils.pxToDp(ctx, baseW), LauncherUtils.pxToDp(ctx, baseH)) * 0.45f).coerceAtLeast(16f)
             "square" -> 10f
             "rounded" -> 18f
-            else -> shapeSpec?.cornerDp ?: 16f
+            else -> 16f
         }
 
         return TileMetrics(
-            widthPx = LauncherUtils.dp(ctx, baseW),
-            heightPx = LauncherUtils.dp(ctx, baseH),
-            iconSizePx = LauncherUtils.dp(ctx, baseIcon),
+            widthPx = baseW,
+            heightPx = baseH,
+            iconSizePx = baseIcon,
             labelTextSizeSp = labelSp,
             cornerRadiusDp = radiusDp
         )
@@ -60,7 +86,7 @@ object AppTileFactory {
     private fun resolveTileBackground(
         ctx: Context,
         lp: LauncherPreferences,
-        metrics: TileMetrics,
+        cornerRadiusDp: Float,
         focused: Boolean
     ): GradientDrawable {
         val themeSpec = TileThemePalette.THEMES.find { it.key == lp.tileColor }
@@ -71,26 +97,26 @@ object AppTileFactory {
 
         if (themeSpec != null) {
             val topCol = if (focused) {
-                LauncherUtils.withAlpha(accent, 145)
+                LauncherUtils.withAlpha(accent, 150)
             } else {
-                LauncherUtils.withAlpha(themeSpec.startColor, 120)
+                LauncherUtils.withAlpha(themeSpec.startColor, 125)
             }
             val bottomCol = if (focused) {
-                LauncherUtils.withAlpha(themeSpec.endColor, 175)
+                LauncherUtils.withAlpha(accent, 180)
             } else {
-                LauncherUtils.withAlpha(themeSpec.endColor, 95)
+                LauncherUtils.withAlpha(themeSpec.endColor, 100)
             }
             val borderCol = if (focused) {
                 accent
             } else {
-                LauncherUtils.withAlpha(accent, 90)
+                LauncherUtils.withAlpha(accent, 95)
             }
 
             return GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(topCol, bottomCol)
             ).apply {
-                cornerRadius = LauncherUtils.dpF(ctx, metrics.cornerRadiusDp)
+                cornerRadius = LauncherUtils.dpF(ctx, cornerRadiusDp)
                 setStroke(strokePx, borderCol)
             }
         }
@@ -102,7 +128,7 @@ object AppTileFactory {
             focused = focused,
             active = false
         ).apply {
-            cornerRadius = LauncherUtils.dpF(ctx, metrics.cornerRadiusDp)
+            cornerRadius = LauncherUtils.dpF(ctx, cornerRadiusDp)
         }
     }
 
@@ -112,16 +138,18 @@ object AppTileFactory {
         cornerRadiusDp: Float,
         focused: Boolean
     ): GradientDrawable {
+        val themeSpec = TileThemePalette.THEMES.find { it.key == lp.tileColor }
         val accent = lp.accentColor
+        val baseFill = themeSpec?.endColor ?: accent
         val fillColor = if (focused) {
-            LauncherUtils.withAlpha(accent, 185)
+            LauncherUtils.withAlpha(accent, 195)
         } else {
-            LauncherUtils.withAlpha(accent, 75)
+            LauncherUtils.withAlpha(baseFill, 115)
         }
         val strokeColor = if (focused) {
             Color.WHITE
         } else {
-            LauncherUtils.withAlpha(accent, 130)
+            LauncherUtils.withAlpha(accent, 135)
         }
 
         return GradientDrawable().apply {
@@ -131,27 +159,62 @@ object AppTileFactory {
         }
     }
 
-    fun createAppTile(
+    fun updateTileAppearance(ctx: Context, tileView: View, lp: LauncherPreferences, isFav: Boolean) {
+        val metrics = resolveMetrics(ctx, lp, tileView.layoutParams?.width ?: 0, tileView.layoutParams?.height ?: 0)
+        val focused = tileView.hasFocus()
+        tileView.background = resolveTileBackground(ctx, lp, metrics.cornerRadiusDp, focused)
+
+        val labelBlock = tileView.findViewWithTag<TextView>("label_block")
+        if (labelBlock != null) {
+            labelBlock.textSize = metrics.labelTextSizeSp
+            labelBlock.background = resolveLabelBlockBackground(ctx, lp, metrics.cornerRadiusDp, focused)
+            labelBlock.isSelected = focused
+        }
+
+        val badgeView = tileView.findViewWithTag<TextView>("fav_badge")
+        if (badgeView != null) {
+            if (!isFav || lp.badgeMode == "none") {
+                badgeView.visibility = View.GONE
+            } else {
+                badgeView.visibility = View.VISIBLE
+                badgeView.text = when (lp.badgeMode) {
+                    "star" -> "★"
+                    "dot" -> "•"
+                    else -> "♥"
+                }
+                badgeView.background = GradientDrawable().apply {
+                    setColor(LauncherUtils.withAlpha(lp.accentColor, 220))
+                    cornerRadius = LauncherUtils.dpF(ctx, 8f)
+                }
+            }
+        }
+    }
+
+    fun create(
         ctx: Context,
         pm: PackageManager,
-        resolveInfo: ResolveInfo,
         lp: LauncherPreferences,
-        isFavorite: Boolean = false,
-        onClick: (ResolveInfo) -> Unit,
-        onLongClick: ((ResolveInfo) -> Boolean)? = null
+        resolveInfo: ResolveInfo,
+        isFavRow: Boolean,
+        isFav: Boolean,
+        canMoveLeft: Boolean,
+        canMoveRight: Boolean,
+        w: Int,
+        h: Int,
+        actions: TileActions
     ): View {
-        val metrics = resolveMetrics(ctx, lp)
-        val appLabel = resolveInfo.loadLabel(pm)?.toString()?.trim().orEmpty().ifEmpty {
-            resolveInfo.activityInfo.packageName
-        }
+        val pkg = resolveInfo.activityInfo.packageName
+        val appLabel = getCachedLabel(pm, resolveInfo)
+        val metrics = resolveMetrics(ctx, lp, w, h)
 
         val container = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
+            tag = if (isFavRow) "fav_$pkg" else "all_$pkg"
             isFocusable = true
             isFocusableInTouchMode = false
             isClickable = true
-            isLongClickable = onLongClick != null
+            isLongClickable = true
             clipChildren = false
             clipToPadding = false
             setPadding(
@@ -161,7 +224,7 @@ object AppTileFactory {
                 LauncherUtils.dp(ctx, 8)
             )
             layoutParams = ViewGroup.LayoutParams(metrics.widthPx, metrics.heightPx)
-            background = resolveTileBackground(ctx, lp, metrics, focused = false)
+            background = resolveTileBackground(ctx, lp, metrics.cornerRadiusDp, focused = false)
         }
 
         val iconStage = FrameLayout(ctx).apply {
@@ -170,7 +233,7 @@ object AppTileFactory {
         }
 
         val iconView = ImageView(ctx).apply {
-            setImageDrawable(resolveInfo.loadIcon(pm))
+            setImageDrawable(getCachedIcon(pm, resolveInfo))
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
         iconStage.addView(
@@ -182,36 +245,36 @@ object AppTileFactory {
             )
         )
 
-        if (isFavorite && lp.badgeMode != "none") {
-            val badgeView = TextView(ctx).apply {
-                text = when (lp.badgeMode) {
-                    "star" -> "★"
-                    "dot" -> "•"
-                    else -> "♥"
-                }
-                textSize = 9f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                setPadding(
-                    LauncherUtils.dp(ctx, 5),
-                    LauncherUtils.dp(ctx, 1),
-                    LauncherUtils.dp(ctx, 5),
-                    LauncherUtils.dp(ctx, 1)
-                )
-                background = GradientDrawable().apply {
-                    setColor(LauncherUtils.withAlpha(lp.accentColor, 220))
-                    cornerRadius = LauncherUtils.dpF(ctx, 8f)
-                }
+        val badgeView = TextView(ctx).apply {
+            tag = "fav_badge"
+            text = when (lp.badgeMode) {
+                "star" -> "★"
+                "dot" -> "•"
+                else -> "♥"
             }
-            iconStage.addView(
-                badgeView,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    Gravity.TOP or Gravity.END
-                )
+            textSize = 9f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            visibility = if (isFav && lp.badgeMode != "none") View.VISIBLE else View.GONE
+            setPadding(
+                LauncherUtils.dp(ctx, 5),
+                LauncherUtils.dp(ctx, 1),
+                LauncherUtils.dp(ctx, 5),
+                LauncherUtils.dp(ctx, 1)
             )
+            background = GradientDrawable().apply {
+                setColor(LauncherUtils.withAlpha(lp.accentColor, 220))
+                cornerRadius = LauncherUtils.dpF(ctx, 8f)
+            }
         }
+        iconStage.addView(
+            badgeView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.END
+            )
+        )
 
         container.addView(
             iconStage,
@@ -222,8 +285,9 @@ object AppTileFactory {
             )
         )
 
-        // App name block: adapts naturally to tile/content width (no rigid fixed width) & uses accent/theme palette
+        // App name block: dynamic width (no fixed width) + accent/theme palette styling
         val labelBlock = TextView(ctx).apply {
+            tag = "label_block"
             text = appLabel
             textSize = metrics.labelTextSizeSp
             typeface = Typeface.DEFAULT_BOLD
@@ -254,15 +318,36 @@ object AppTileFactory {
 
         container.setOnFocusChangeListener { v, hasFocus ->
             MotionEngine.animateFocus(v, hasFocus, lp.motionStyle, 1.05f, 3f)
-            v.background = resolveTileBackground(ctx, lp, metrics, focused = hasFocus)
-            labelBlock.background = resolveLabelBlockBackground(ctx, lp, metrics.cornerRadiusDp, focused = hasFocus)
-            labelBlock.isSelected = hasFocus
+            updateTileAppearance(ctx, v, lp, isFav)
         }
 
-        container.setOnClickListener { onClick(resolveInfo) }
-        if (onLongClick != null) {
-            container.setOnLongClickListener { onLongClick(resolveInfo) }
+        container.setOnClickListener {
+            val launchIntent = pm.getLaunchIntentForPackage(pkg)
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(launchIntent)
+            }
         }
+
+        val openOptions = {
+            AppActionDialog.show(
+                ctx = ctx,
+                pkg = pkg,
+                appName = appLabel,
+                isFav = isFav,
+                canMoveLeft = canMoveLeft,
+                canMoveRight = canMoveRight,
+                accent = lp.accentColor,
+                isHiddenMode = false,
+                onToggleFav = { actions.onToggleFavorite(pkg, appLabel) },
+                onMoveLeft = { actions.onMoveFavorite(pkg, -1) },
+                onMoveRight = { actions.onMoveFavorite(pkg, 1) },
+                onHideOrUnhideApp = { actions.onHideApp(pkg, appLabel) }
+            )
+            true
+        }
+
+        container.setOnLongClickListener { openOptions() }
 
         return container
     }
