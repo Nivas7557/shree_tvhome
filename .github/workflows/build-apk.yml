@@ -1,0 +1,188 @@
+# Name of the workflow displayed in the GitHub Actions tab
+name: Android Debug APK
+
+# Defines when this workflow should run
+on:
+  # Allows you to run this workflow manually from any branch in the GitHub Actions tab
+  workflow_dispatch:
+
+# List of jobs that will execute when the workflow runs
+jobs:
+  build:
+    # Uses the latest Ubuntu Linux virtual machine provided by GitHub
+    runs-on: ubuntu-latest
+
+    # Read-only permission for the public source repository
+    permissions:
+      contents: read
+
+    # Sequential list of tasks to build, verify, and push APKs to the private storage repo
+    steps:
+      # Step 1: Downloads your source code from the selected branch
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      # Step 2: Installs Java 17 (Temurin distribution) required for Android builds
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Step 3: Sets up Gradle version 8.9 and configures caching for faster builds
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: '8.9'
+
+      # Step 4: Captures the current Indian Standard Time (IST) in 12-hour AM/PM format and date
+      - name: Get IST Time and Date
+        id: timestamp
+        run: |
+          # Formats the timestamp as 12-hour Hour-Minute_AM/PM_Day-Month (e.g., 01-58_PM_24-11)
+          STAMP=$(TZ='Asia/Kolkata' date +'%I-%M_%p_%d-%m')
+          # Saves the timestamp into an output variable named 'dt' for later steps
+          echo "dt=$STAMP" >> $GITHUB_OUTPUT
+
+      # Step 5: Compiles the project and generates the debug APK
+      - name: Build debug APK
+        run: gradle assembleDebug
+
+      # Step 6: Verifies APK existence, file size, and Android manifest parsing before touching old APKs
+      - name: Verify and Parse Generated APK
+        run: |
+          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+
+          # Check 1: Verify the APK file actually exists
+          if [ ! -f "$APK_PATH" ]; then
+            echo "::error::Build finished, but no APK file was generated! Existing APKs were NOT touched."
+            echo "### ❌ Build Failed: No APK Generated" >> $GITHUB_STEP_SUMMARY
+            echo "Gradle completed without creating an APK file. All previous APKs remain safe." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          # Check 2: Verify the APK file is not empty (0 bytes)
+          if [ ! -s "$APK_PATH" ]; then
+            echo "::error::Generated APK is empty (0 bytes)! Existing APKs were NOT touched."
+            echo "### ❌ Build Failed: Empty APK File" >> $GITHUB_STEP_SUMMARY
+            echo "The generated APK is 0 bytes (corrupt). All previous APKs remain safe." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          # Check 3: Test parsing the APK using Android SDK's aapt2 tool (prevents 'Parse Error' on devices)
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name "aapt2" | sort -V | tail -n 1)
+          if [ -n "$AAPT2" ]; then
+            if ! "$AAPT2" dump badging "$APK_PATH" > /dev/null 2>&1; then
+              echo "::error::APK Parse Failed! The generated APK is corrupted. Existing APKs were NOT replaced."
+              echo "### ❌ APK Parse Error: Corrupt Package" >> $GITHUB_STEP_SUMMARY
+              echo "The APK failed Android manifest validation (\`aapt2\` parse check). It would fail to install on a device, so **no old APKs were deleted or replaced**." >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
+          fi
+
+          # If all checks pass, log success notice
+          APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
+          echo "::notice::APK verified and parsed successfully (Size: $APK_SIZE)."
+
+      # Step 7: Rotates and pushes the APK into a dynamic <repo>_<branch> folder in the private APK repo
+      - name: Rotate and Push APK to Private Storage Repo
+        env:
+          # CHANGE THESE NUMBERS ONLY: Set build limits for 'main' vs other branches
+          MAIN_MAX_BUILDS: 6
+          OTHER_MAX_BUILDS: 3
+          # Personal Access Token (PAT) stored in repository secrets
+          PAT_TOKEN: ${{ secrets.TESTER_REPO_TOKEN }}
+          # Your private APK repository (Format: username/repo-name)
+          PRIVATE_REPO: 'Nivas7557/My_Generated_Apks'
+          # Target branch in the private APK repository
+          PRIVATE_BRANCH: 'main'
+          # Current build timestamp
+          DT: ${{ steps.timestamp.outputs.dt }}
+          # Automatically extracts current repository name (e.g., shree_tvhome)
+          REPO_NAME: ${{ github.event.repository.name }}
+          # Automatically extracts current branch name (e.g., main or Upgrades_Testing)
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          # Automatically apply build limit based on whether the branch is 'main' or another branch
+          if [ "$BRANCH_NAME" == "main" ]; then
+            MAX_BUILDS=$MAIN_MAX_BUILDS
+          else
+            MAX_BUILDS=$OTHER_MAX_BUILDS
+          fi
+
+          # Build dynamic folder name: <repo_name>_<branch_name> (replaces any '/' in branch names with '_')
+          SAFE_BRANCH=$(echo "$BRANCH_NAME" | tr '/' '_')
+          TARGET_FOLDER="${REPO_NAME}_${SAFE_BRANCH}"
+          
+          # Construct clean GitHub repository URL safely
+          HOST="github.com"
+          REPO_URL="https://x-access-token:${PAT_TOKEN}@${HOST}/${PRIVATE_REPO}.git"
+
+          # Clone the private APK repository (shallow clone with depth 1 to keep it fast)
+          if git ls-remote --exit-code --heads "$REPO_URL" "$PRIVATE_BRANCH" >/dev/null 2>&1; then
+            git clone --depth 1 --branch "$PRIVATE_BRANCH" "$REPO_URL" private_apk_repo
+            cd private_apk_repo
+          else
+            mkdir private_apk_repo
+            cd private_apk_repo
+            git init
+            git remote add origin "$REPO_URL"
+          fi
+
+          # Create or enter the specific <repo>_<branch> folder (leaves all other folders untouched!)
+          mkdir -p "$TARGET_FOLDER"
+          cd "$TARGET_FOLDER"
+
+          # Calculate the oldest allowed index (e.g., if MAX_BUILDS=6, oldest is old_5)
+          OLDEST=$((MAX_BUILDS - 1))
+
+          # 1. Delete the oldest build and any extra old builds if MAX_BUILDS was reduced
+          for f in Nivas_Launcher_old_*.apk; do
+            [ -e "$f" ] || continue
+            num=$(echo "$f" | sed -n 's/^Nivas_Launcher_old_\([0-9]\+\)_.*\.apk$/\1/p')
+            if [ -n "$num" ] && [ "$num" -ge "$OLDEST" ]; then
+              rm -f "$f"
+            fi
+          done
+
+          # 2. Shift existing old builds down by 1 position (from highest to lowest)
+          for ((i=OLDEST-1; i>=1; i--)); do
+            next=$((i + 1))
+            for f in Nivas_Launcher_old_${i}_*.apk; do
+              [ -e "$f" ] && mv "$f" "${f/Nivas_Launcher_old_${i}_/Nivas_Launcher_old_${next}_}"
+            done
+          done
+
+          # 3. Shift previous 'new' build to 'old_1' (or delete it if MAX_BUILDS is 1)
+          if [ "$OLDEST" -ge 1 ]; then
+            for f in Nivas_Launcher_new_*.apk; do
+              [ -e "$f" ] && mv "$f" "${f/Nivas_Launcher_new_/Nivas_Launcher_old_1_}"
+            done
+          else
+            rm -f Nivas_Launcher_new_*.apk
+          fi
+
+          # 4. Copy the newly verified APK into this folder with the 'Nivas_Launcher_new_' prefix
+          cp "../../app/build/outputs/apk/debug/app-debug.apk" "Nivas_Launcher_new_${DT}.apk"
+
+          # Return to the root of the private APK repository
+          cd ..
+
+          # Create a fresh orphan commit (preserves ALL folders in the repo, but wipes old Git history bloat)
+          git checkout --orphan temp_clean_branch
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.${HOST}"
+          git add -A
+          git commit -m "Update ${TARGET_FOLDER}: Nivas_Launcher_new_${DT}.apk (Last ${MAX_BUILDS} builds)"
+
+          # Force-push the clean state to the private APK repository
+          git push -f origin temp_clean_branch:"$PRIVATE_BRANCH"
+
+          # Write a clear success summary notice to the GitHub Actions run page
+          APK_SIZE=$(du -h "${TARGET_FOLDER}/Nivas_Launcher_new_${DT}.apk" | cut -f1)
+          echo "### ✅ APK Successfully Built & Saved to Private Repo" >> $GITHUB_STEP_SUMMARY
+          echo "- **Private Repo:** \`${PRIVATE_REPO}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Folder:** \`${TARGET_FOLDER}/\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **New File:** \`Nivas_Launcher_new_${DT}.apk\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **File Size:** ${APK_SIZE}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Rotation Policy:** Kept last **${MAX_BUILDS}** builds per branch (Zero history bloat)" >> $GITHUB_STEP_SUMMARY
