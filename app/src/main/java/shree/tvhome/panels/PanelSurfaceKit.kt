@@ -1,6 +1,6 @@
 // Important instructions:
-// - Serve as the shared surface kit for section headers, glass cards, segmented tracks, and sliders.
-// - Automatically adapt text and stroke colors to AppSettings and Themes without manual duplication.
+// - Serve as the shared surface kit with Canva-style gradient fills, focus previews, and D-Pad sliders.
+// - Support focus preview callbacks so options preview on focus and apply only when clicked/confirmed.
 
 package shree.tvhome.panels
 
@@ -55,20 +55,21 @@ object PanelSurfaceKit {
         })
     }
 
-    // Builds a glass card background tinted by the active palette and accent color.
+    // Builds a glass card background blended with the Canva-style accent gradient.
     fun glassCardBg(ctx: Context, accent: Int, active: Boolean, themeKey: String? = null) = GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
+        GradientDrawable.Orientation.TL_BR,
         if (active) {
+            val grad = Themes.getAccentGradientColors(accent)
             intArrayOf(
-                LayoutMetrics.withAlpha(accent, 225),
-                LayoutMetrics.withAlpha(accent, 145)
+                LayoutMetrics.withAlpha(grad.firstOrNull() ?: accent, 225),
+                LayoutMetrics.withAlpha(grad.lastOrNull() ?: accent, 165)
             )
         } else {
             val base = Themes.getTheme(themeKey).normalColors
             val topCol = base.firstOrNull() ?: Color.rgb(22, 34, 72)
             val botCol = base.lastOrNull() ?: topCol
             intArrayOf(
-                LayoutMetrics.blendWithAccent(topCol, accent, 0.14f, 185),
+                LayoutMetrics.blendWithAccent(topCol, accent, 0.16f, 185),
                 LayoutMetrics.withAlpha(botCol, 155)
             )
         }
@@ -80,13 +81,14 @@ object PanelSurfaceKit {
         )
     }
 
-    // Adds a horizontal segmented option bar synchronized with AppSettings style changes.
+    // Adds a horizontal segmented bar that previews on focus and applies only on click/OK.
     fun addSegmentedTrack(
         ctx: Context,
         parent: LinearLayout,
         settings: AppSettings,
         options: List<Pair<String, String>>,
         getSelected: () -> String,
+        onFocusPreview: ((String?) -> Unit)? = null,
         onSelect: (String) -> Unit
     ) {
         val row = LinearLayout(ctx).apply {
@@ -98,16 +100,17 @@ object PanelSurfaceKit {
 
         val buttons = ArrayList<Pair<String, TextView>>()
         val refreshChips = {
+            val grad = Themes.getAccentGradientColors(settings.accentColor)
             row.background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
+                GradientDrawable.Orientation.TL_BR,
                 intArrayOf(Color.argb(85, 10, 16, 38), Color.argb(55, 22, 34, 72))
             ).apply {
                 cornerRadius = LayoutMetrics.dpF(ctx, 14f)
-                setStroke(dp(ctx, 1), LayoutMetrics.withAlpha(settings.accentColor, 95))
+                setStroke(dp(ctx, 1), LayoutMetrics.withAlpha(grad.lastOrNull() ?: settings.accentColor, 105))
             }
             val current = getSelected()
             val textColor = Themes.getPrimaryTextColor(settings.tileColor)
-            val activeChipColors = intArrayOf(settings.accentColor)
+            val activeChipColors = grad
             buttons.forEach { (k, tv) ->
                 val isSel = k == current
                 tv.setTextColor(
@@ -116,8 +119,11 @@ object PanelSurfaceKit {
                 )
                 tv.background = if (isSel || tv.hasFocus()) {
                     GradientDrawable(
-                        GradientDrawable.Orientation.LEFT_RIGHT,
-                        intArrayOf(LayoutMetrics.withAlpha(settings.accentColor, 230), LayoutMetrics.withAlpha(settings.accentColor, 155))
+                        GradientDrawable.Orientation.TL_BR,
+                        intArrayOf(
+                            LayoutMetrics.withAlpha(grad.firstOrNull() ?: settings.accentColor, 230),
+                            LayoutMetrics.withAlpha(grad.lastOrNull() ?: settings.accentColor, 175)
+                        )
                     ).apply {
                         cornerRadius = LayoutMetrics.dpF(ctx, 11f)
                         setStroke(dp(ctx, if (tv.hasFocus()) 2 else 1), Color.WHITE)
@@ -139,8 +145,10 @@ object PanelSurfaceKit {
                 setOnFocusChangeListener { v, f ->
                     AnimationController.animateFocus(v, f, settings.motionStyle, 1.05f, 4f)
                     refreshChips()
+                    if (f) onFocusPreview?.invoke(key) else onFocusPreview?.invoke(null)
                 }
                 setOnClickListener {
+                    onFocusPreview?.invoke(null)
                     onSelect(key)
                     refreshChips()
                 }
@@ -155,7 +163,7 @@ object PanelSurfaceKit {
         parent.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 6) })
     }
 
-    // Adds an interactive percentage pill slider supporting D-Pad left/right and touch scrubbing.
+    // Adds a D-Pad Left/Right and touch percentage slider with gradient fill.
     fun addGlossyPillSlider(
         ctx: Context,
         parent: LinearLayout,
@@ -178,6 +186,7 @@ object PanelSurfaceKit {
             private var isFocusedState = false
 
             init {
+                tag = "pill_slider"
                 isFocusable = true
                 isClickable = true
                 settings.addStyleListener { invalidate() }
@@ -219,7 +228,7 @@ object PanelSurfaceKit {
                 return super.onTouchEvent(event)
             }
 
-            // Draws the pill track, accent fill bar, border stroke, title, and percentage readout.
+            // Draws the pill track, gradient accent fill bar, border stroke, title, and percentage.
             override fun onDraw(canvas: Canvas) {
                 val w = width.toFloat()
                 val h = height.toFloat()
@@ -236,11 +245,12 @@ object PanelSurfaceKit {
                 canvas.drawRect(rect, trackPaint)
 
                 val fillW = w * (currentPct / 100f)
+                val grad = Themes.getAccentGradientColors(settings.accentColor)
                 fillPaint.shader = LinearGradient(
                     0f, 0f, fillW.coerceAtLeast(1f), 0f,
                     intArrayOf(
-                        LayoutMetrics.withAlpha(settings.accentColor, 225),
-                        LayoutMetrics.withAlpha(settings.accentColor, 140)
+                        LayoutMetrics.withAlpha(grad.firstOrNull() ?: settings.accentColor, 225),
+                        LayoutMetrics.withAlpha(grad.lastOrNull() ?: settings.accentColor, 175)
                     ),
                     null, Shader.TileMode.CLAMP
                 )
@@ -264,7 +274,7 @@ object PanelSurfaceKit {
         parent.addView(sliderView, LinearLayout.LayoutParams(-1, dp(ctx, 40)).apply { bottomMargin = dp(ctx, 7) })
     }
 
-    // Creates a circular color orb preview view for palette selection cards.
+    // Creates a circular gradient orb view for palette or accent previews.
     fun createThemeOrbView(ctx: Context, colors: IntArray, selected: Boolean): View = object : View(ctx) {
         private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -283,7 +293,7 @@ object PanelSurfaceKit {
         }
     }
 
-    // Creates a standard action row with icon, title, subtitle, and trailing indicator.
+    // Creates a standard action row with optional tag and focus preview callback.
     fun makeActionRow(
         ctx: Context,
         settings: AppSettings,
@@ -291,8 +301,11 @@ object PanelSurfaceKit {
         title: String,
         sub: String,
         trailingText: String = "›",
+        tagName: String? = null,
+        onFocusPreview: ((Boolean) -> Unit)? = null,
         onClick: () -> Unit
     ) = LinearLayout(ctx).apply {
+        if (tagName != null) tag = tagName
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(ctx, 12), dp(ctx, 9), dp(ctx, 12), dp(ctx, 9))
@@ -338,6 +351,7 @@ object PanelSurfaceKit {
         setOnFocusChangeListener { v, f ->
             AnimationController.animateFocus(v, f, settings.motionStyle, 1.02f, 4f)
             syncVisuals()
+            onFocusPreview?.invoke(f)
         }
         setOnClickListener { onClick() }
 
