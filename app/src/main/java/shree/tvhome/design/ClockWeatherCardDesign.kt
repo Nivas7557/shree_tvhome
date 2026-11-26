@@ -1,5 +1,5 @@
 // Important instructions:
-// - Render multiple distinct clock styles (Classic, Chrono, Orbit, Digital) instead of a plain circle.
+// - Render clock styles purely from Themes.ClockStyleSpec properties without hardcoded style names or branches.
 // - Support Automatic and Manual location modes with D-Pad friendly city selection and search.
 
 package shree.tvhome.design
@@ -23,7 +23,6 @@ import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
 import android.view.Gravity
-import android.view.View
 import android.view.Window
 import android.view.WindowManager
 import android.widget.EditText
@@ -75,7 +74,7 @@ class ClockWeatherCardDesign(
         CitySuggestion("New Delhi", "Delhi", "India", 28.6139, 77.2090)
     )
 
-    private val clockFaceView = MultiStyleClockView(ctx)
+    private val clockFaceView = DynamicClockFaceView(ctx)
     private val digitalTimeTv = TextView(ctx)
     private val amPmTv = TextView(ctx)
     private val dateTv = TextView(ctx)
@@ -98,7 +97,7 @@ class ClockWeatherCardDesign(
         }
     }
 
-    // Builds the multi-style clock view, digital time/date header, and D-Pad location weather card.
+    // Builds the clock face, digital time/date block, and D-Pad location weather card.
     init {
         orientation = VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
@@ -209,7 +208,7 @@ class ClockWeatherCardDesign(
 
         val scrollWrapper = ScrollView(context).apply {
             isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
+            overScrollMode = ScrollView.OVER_SCROLL_NEVER
         }
 
         val box = LinearLayout(context).apply {
@@ -233,8 +232,7 @@ class ClockWeatherCardDesign(
             setPadding(0, 0, 0, dp(10))
         })
 
-        // Mode switcher row inside dialog ("Automatic" vs "Manual").
-        val modeRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val modeRow = LinearLayout(context).apply { orientation = HORIZONTAL }
         Themes.LOCATION_MODES.forEachIndexed { idx, modeSpec ->
             val isSelected = settings.locationMode == modeSpec.key
             val modeBtn = TextView(context).apply {
@@ -306,7 +304,7 @@ class ClockWeatherCardDesign(
                 setPadding(dp(2), dp(2), dp(2), dp(6))
             })
             list.chunked(2).forEach { pair ->
-                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+                val row = LinearLayout(context).apply { orientation = HORIZONTAL }
                 pair.forEachIndexed { colIdx, item ->
                     val rowBtn = LinearLayout(context).apply {
                         orientation = VERTICAL
@@ -472,11 +470,11 @@ class ClockWeatherCardDesign(
         }
     }
 
-    // Updates clock style, accent, glass theme surface, and stage sizing proportionally.
+    // Updates clock style from Themes.getClockStyle, accent, glass surface, and stage sizing.
     fun refreshStyle() {
         val accent = settings.accentColor
         amPmTv.setTextColor(accent)
-        clockFaceView.updateStyle(settings.clockStyle, accent)
+        clockFaceView.updateSpec(Themes.getClockStyle(settings.clockStyle), accent)
 
         background = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
@@ -608,8 +606,8 @@ class ClockWeatherCardDesign(
 
     private fun dp(v: Int): Int = LayoutMetrics.dp(context, v)
 
-    // Multi-style clock renderer supporting Classic, Chrono arc, Orbit ring, and Digital card styles.
-    private class MultiStyleClockView(ctx: Context) : View(ctx) {
+    // Data-driven clock face renderer driven purely by Themes.ClockStyleSpec properties.
+    private class DynamicClockFaceView(ctx: Context) : android.view.View(ctx) {
         private val bezelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
         private val innerRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
         private val dialPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -623,18 +621,18 @@ class ClockWeatherCardDesign(
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
         }
-        private val arcRect = RectF()
-        private var styleKey = Themes.CLOCK_STYLES.first().key
+        private val shapeRect = RectF()
+        private var styleSpec: Themes.ClockStyleSpec = Themes.CLOCK_STYLES.first()
         private var accent = Themes.ACCENTS.first().color
 
-        // Updates active clock style and accent color and redraws immediately.
-        fun updateStyle(newStyle: String, newAccent: Int) {
-            styleKey = newStyle
+        // Applies a ClockStyleSpec and accent color without hardcoding style keys.
+        fun updateSpec(newSpec: Themes.ClockStyleSpec, newAccent: Int) {
+            styleSpec = newSpec
             accent = newAccent
             invalidate()
         }
 
-        // Renders the active clock style on the canvas.
+        // Renders visual layers dynamically according to styleSpec flags and ratios.
         override fun onDraw(canvas: Canvas) {
             val w = width.toFloat()
             val h = height.toFloat()
@@ -642,133 +640,135 @@ class ClockWeatherCardDesign(
             val cx = w / 2f
             val cy = h / 2f
             val r = minOf(cx, cy) - LayoutMetrics.dpF(context, 4f)
+            val spec = styleSpec
 
-            when (styleKey) {
-                "chrono" -> drawChronoStyle(canvas, w, h, cx, cy, r)
-                "minimal" -> drawOrbitStyle(canvas, cx, cy, r)
-                "digital" -> drawDigitalStyle(canvas, w, h, cx, cy, r)
-                else -> drawClassicStyle(canvas, w, h, cx, cy, r)
+            if (spec.showDialFace) {
+                if (spec.showDigitalReadout) {
+                    val pad = LayoutMetrics.dpF(context, 6f)
+                    shapeRect.set(pad, pad, w - pad, h - pad)
+                    dialPaint.shader = LinearGradient(
+                        0f, 0f, w, h,
+                        intArrayOf(Color.argb(175, 22, 32, 66), Color.argb(210, 10, 16, 36)),
+                        null, Shader.TileMode.CLAMP
+                    )
+                    canvas.drawRoundRect(shapeRect, r * spec.cornerRadiusRatio, r * spec.cornerRadiusRatio, dialPaint)
+                } else {
+                    dialPaint.shader = RadialGradient(
+                        cx, cy * 0.85f, r,
+                        intArrayOf(Color.rgb(34, 48, 96), Color.rgb(16, 24, 54), Color.rgb(8, 12, 28)),
+                        floatArrayOf(0f, 0.72f, 1f),
+                        Shader.TileMode.CLAMP
+                    )
+                    canvas.drawCircle(cx, cy, r, dialPaint)
+                }
             }
-        }
 
-        // Classic luxury dial with radial face, ticks, numerals, and three hands.
-        private fun drawClassicStyle(canvas: Canvas, w: Float, h: Float, cx: Float, cy: Float, r: Float) {
-            dialPaint.shader = RadialGradient(
-                cx, cy * 0.85f, r,
-                intArrayOf(Color.rgb(34, 48, 96), Color.rgb(16, 24, 54), Color.rgb(8, 12, 28)),
-                floatArrayOf(0f, 0.72f, 1f),
-                Shader.TileMode.CLAMP
-            )
-            canvas.drawCircle(cx, cy, r, dialPaint)
+            if (spec.showBezelRing) {
+                if (spec.showDigitalReadout) {
+                    val pad = LayoutMetrics.dpF(context, 6f)
+                    shapeRect.set(pad, pad, w - pad, h - pad)
+                    arcPaint.style = Paint.Style.STROKE
+                    arcPaint.strokeWidth = LayoutMetrics.dpF(context, 2.2f)
+                    arcPaint.color = accent
+                    canvas.drawRoundRect(shapeRect, r * spec.cornerRadiusRatio, r * spec.cornerRadiusRatio, arcPaint)
+                } else {
+                    bezelPaint.strokeWidth = LayoutMetrics.dpF(context, 3.2f)
+                    bezelPaint.shader = LinearGradient(0f, 0f, w, h, accent, Color.rgb(225, 238, 255), Shader.TileMode.CLAMP)
+                    canvas.drawCircle(cx, cy, r, bezelPaint)
+                }
+            }
 
-            bezelPaint.strokeWidth = LayoutMetrics.dpF(context, 3.2f)
-            bezelPaint.shader = LinearGradient(0f, 0f, w, h, accent, Color.rgb(225, 238, 255), Shader.TileMode.CLAMP)
-            canvas.drawCircle(cx, cy, r, bezelPaint)
+            if (spec.dashedOuterRing) {
+                innerRingPaint.style = Paint.Style.STROKE
+                innerRingPaint.strokeWidth = LayoutMetrics.dpF(context, 2f)
+                innerRingPaint.color = LayoutMetrics.withAlpha(accent, 140)
+                innerRingPaint.pathEffect = DashPathEffect(floatArrayOf(12f, 10f), 0f)
+                canvas.drawCircle(cx, cy, r * spec.outerRingRatio, innerRingPaint)
+                innerRingPaint.pathEffect = null
 
-            innerRingPaint.strokeWidth = LayoutMetrics.dpF(context, 1f)
-            innerRingPaint.color = Color.argb(75, 255, 255, 255)
-            canvas.drawCircle(cx, cy, r * 0.88f, innerRingPaint)
+                innerRingPaint.strokeWidth = LayoutMetrics.dpF(context, 1.2f)
+                innerRingPaint.color = Color.argb(65, 255, 255, 255)
+                canvas.drawCircle(cx, cy, r * spec.innerRingRatio, innerRingPaint)
+            } else if (spec.showDialFace && !spec.showDigitalReadout) {
+                innerRingPaint.style = Paint.Style.STROKE
+                innerRingPaint.strokeWidth = LayoutMetrics.dpF(context, 1f)
+                innerRingPaint.color = Color.argb(75, 255, 255, 255)
+                canvas.drawCircle(cx, cy, r * spec.outerRingRatio, innerRingPaint)
+            }
 
-            for (i in 0 until 60) {
-                val ang = Math.toRadians((i * 6 - 90).toDouble())
-                val isHour = i % 5 == 0
-                tickPaint.strokeWidth = LayoutMetrics.dpF(context, if (isHour) 2.2f else 1f)
-                tickPaint.color = if (isHour) accent else Color.argb(90, 210, 230, 255)
-                val inner = r * if (isHour) 0.83f else 0.86f
-                val outer = r * 0.89f
-                canvas.drawLine(
-                    (cx + cos(ang) * inner).toFloat(), (cy + sin(ang) * inner).toFloat(),
-                    (cx + cos(ang) * outer).toFloat(), (cy + sin(ang) * outer).toFloat(), tickPaint
+            if (spec.showProgressArcs) {
+                val cal = Calendar.getInstance()
+                val secSweep = (cal.get(Calendar.SECOND) / 60f) * 360f
+                val minSweep = (cal.get(Calendar.MINUTE) / 60f) * 360f
+
+                arcPaint.style = Paint.Style.STROKE
+                arcPaint.strokeWidth = LayoutMetrics.dpF(context, 5f)
+                arcPaint.color = Color.argb(45, 255, 255, 255)
+                shapeRect.set(
+                    cx - r * spec.outerRingRatio, cy - r * spec.outerRingRatio,
+                    cx + r * spec.outerRingRatio, cy + r * spec.outerRingRatio
                 )
+                canvas.drawArc(shapeRect, 0f, 360f, false, arcPaint)
+
+                arcPaint.color = accent
+                canvas.drawArc(shapeRect, -90f, secSweep, false, arcPaint)
+
+                arcPaint.strokeWidth = LayoutMetrics.dpF(context, 3.5f)
+                arcPaint.color = Color.rgb(120, 235, 195)
+                shapeRect.set(
+                    cx - r * spec.innerRingRatio, cy - r * spec.innerRingRatio,
+                    cx + r * spec.innerRingRatio, cy + r * spec.innerRingRatio
+                )
+                canvas.drawArc(shapeRect, -90f, minSweep, false, arcPaint)
             }
 
-            for (hrNum in 1..12) {
-                val ang = Math.toRadians((hrNum * 30 - 90).toDouble())
-                val isCardinal = hrNum % 3 == 0
-                numPaint.textSize = r * if (isCardinal) 0.19f else 0.145f
-                numPaint.color = if (isCardinal) Color.WHITE else Color.argb(215, 205, 225, 250)
-                val numDist = r * 0.67f
-                val nx = (cx + cos(ang) * numDist).toFloat()
-                val ny = (cy + sin(ang) * numDist).toFloat() - ((numPaint.descent() + numPaint.ascent()) / 2f)
-                canvas.drawText(hrNum.toString(), nx, ny, numPaint)
+            if (spec.showTicks) {
+                for (i in 0 until 60) {
+                    val ang = Math.toRadians((i * 6 - 90).toDouble())
+                    val isHour = i % 5 == 0
+                    tickPaint.strokeWidth = LayoutMetrics.dpF(context, if (isHour) 2.2f else 1f)
+                    tickPaint.color = if (isHour) accent else Color.argb(90, 210, 230, 255)
+                    val inner = r * if (isHour) 0.83f else 0.86f
+                    val outer = r * 0.89f
+                    canvas.drawLine(
+                        (cx + cos(ang) * inner).toFloat(), (cy + sin(ang) * inner).toFloat(),
+                        (cx + cos(ang) * outer).toFloat(), (cy + sin(ang) * outer).toFloat(), tickPaint
+                    )
+                }
             }
 
-            drawHands(canvas, cx, cy, r)
-        }
+            if (spec.showNumerals) {
+                for (hrNum in 1..12) {
+                    val ang = Math.toRadians((hrNum * 30 - 90).toDouble())
+                    val isCardinal = hrNum % 3 == 0
+                    numPaint.typeface = Typeface.create("serif", Typeface.BOLD)
+                    numPaint.textSize = r * if (isCardinal) 0.19f else 0.145f
+                    numPaint.color = if (isCardinal) Color.WHITE else Color.argb(215, 205, 225, 250)
+                    val numDist = r * spec.innerRingRatio
+                    val nx = (cx + cos(ang) * numDist).toFloat()
+                    val ny = (cy + sin(ang) * numDist).toFloat() - ((numPaint.descent() + numPaint.ascent()) / 2f)
+                    canvas.drawText(hrNum.toString(), nx, ny, numPaint)
+                }
+            }
 
-        // Chronograph arc dial with progress arcs for seconds and minutes.
-        private fun drawChronoStyle(canvas: Canvas, w: Float, h: Float, cx: Float, cy: Float, r: Float) {
-            dialPaint.shader = RadialGradient(
-                cx, cy, r,
-                intArrayOf(Color.rgb(24, 34, 68), Color.rgb(10, 14, 30)),
-                null, Shader.TileMode.CLAMP
-            )
-            canvas.drawCircle(cx, cy, r, dialPaint)
+            if (spec.showDigitalReadout) {
+                val now = Date()
+                val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(now)
+                val secStr = SimpleDateFormat(":ss", Locale.getDefault()).format(now)
 
-            val cal = Calendar.getInstance()
-            val secSweep = (cal.get(Calendar.SECOND) / 60f) * 360f
-            val minSweep = (cal.get(Calendar.MINUTE) / 60f) * 360f
+                numPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                numPaint.textSize = r * 0.36f
+                numPaint.color = Color.WHITE
+                canvas.drawText(timeStr, cx, cy - r * 0.04f, numPaint)
 
-            arcPaint.strokeWidth = LayoutMetrics.dpF(context, 5f)
-            arcPaint.color = Color.argb(45, 255, 255, 255)
-            arcRect.set(cx - r * 0.90f, cy - r * 0.90f, cx + r * 0.90f, cy + r * 0.90f)
-            canvas.drawArc(arcRect, 0f, 360f, false, arcPaint)
+                numPaint.textSize = r * 0.22f
+                numPaint.color = accent
+                canvas.drawText(secStr, cx, cy + r * 0.28f, numPaint)
+            }
 
-            arcPaint.color = accent
-            canvas.drawArc(arcRect, -90f, secSweep, false, arcPaint)
-
-            arcPaint.strokeWidth = LayoutMetrics.dpF(context, 3.5f)
-            arcPaint.color = Color.rgb(120, 235, 195)
-            arcRect.set(cx - r * 0.74f, cy - r * 0.74f, cx + r * 0.74f, cy + r * 0.74f)
-            canvas.drawArc(arcRect, -90f, minSweep, false, arcPaint)
-
-            drawHands(canvas, cx, cy, r * 0.92f)
-        }
-
-        // Orbit ring dial with a dashed outer track and clean geometric hands.
-        private fun drawOrbitStyle(canvas: Canvas, cx: Float, cy: Float, r: Float) {
-            innerRingPaint.style = Paint.Style.STROKE
-            innerRingPaint.strokeWidth = LayoutMetrics.dpF(context, 2f)
-            innerRingPaint.color = LayoutMetrics.withAlpha(accent, 140)
-            innerRingPaint.pathEffect = DashPathEffect(floatArrayOf(12f, 10f), 0f)
-            canvas.drawCircle(cx, cy, r * 0.88f, innerRingPaint)
-            innerRingPaint.pathEffect = null
-
-            innerRingPaint.strokeWidth = LayoutMetrics.dpF(context, 1.2f)
-            innerRingPaint.color = Color.argb(65, 255, 255, 255)
-            canvas.drawCircle(cx, cy, r * 0.62f, innerRingPaint)
-
-            drawHands(canvas, cx, cy, r)
-        }
-
-        // Framed digital telemetry dial displaying large 24h/12h time and seconds inside a rounded badge.
-        private fun drawDigitalStyle(canvas: Canvas, w: Float, h: Float, cx: Float, cy: Float, r: Float) {
-            val pad = LayoutMetrics.dpF(context, 6f)
-            arcRect.set(pad, pad, w - pad, h - pad)
-            dialPaint.shader = LinearGradient(
-                0f, 0f, w, h,
-                intArrayOf(Color.argb(175, 22, 32, 66), Color.argb(210, 10, 16, 36)),
-                null, Shader.TileMode.CLAMP
-            )
-            canvas.drawRoundRect(arcRect, r * 0.35f, r * 0.35f, dialPaint)
-
-            arcPaint.style = Paint.Style.STROKE
-            arcPaint.strokeWidth = LayoutMetrics.dpF(context, 2.2f)
-            arcPaint.color = accent
-            canvas.drawRoundRect(arcRect, r * 0.35f, r * 0.35f, arcPaint)
-
-            val now = Date()
-            val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(now)
-            val secStr = SimpleDateFormat(":ss", Locale.getDefault()).format(now)
-
-            numPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            numPaint.textSize = r * 0.36f
-            numPaint.color = Color.WHITE
-            canvas.drawText(timeStr, cx, cy - r * 0.04f, numPaint)
-
-            numPaint.textSize = r * 0.22f
-            numPaint.color = accent
-            canvas.drawText(secStr, cx, cy + r * 0.28f, numPaint)
+            if (spec.showHands) {
+                drawHands(canvas, cx, cy, r * spec.handScaleRatio)
+            }
         }
 
         private fun drawHands(canvas: Canvas, cx: Float, cy: Float, r: Float) {
