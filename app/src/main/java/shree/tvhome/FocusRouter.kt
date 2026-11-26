@@ -1,6 +1,6 @@
 // Important instructions:
-// - Route D-Pad focus naturally without forced focus traps or hardcoded tag checks.
-// - Allow horizontal SeekBar adjustment and clean return to the active header button.
+// - Route D-Pad focus naturally without blocking horizontal slider controls or trapping focus.
+// - Allow horizontal sliders and custom controls to handle DPAD_LEFT and DPAD_RIGHT cleanly.
 
 package shree.tvhome
 
@@ -62,9 +62,10 @@ object FocusRouter {
         val inDrawer = drawerFocus != null
         val current = drawerFocus ?: topNavBar.findFocus()
 
-        // Keep left/right movement inside the current row or SeekBar while drawer focus is active.
+        // Let SeekBars and horizontal slider views consume DPAD_LEFT/DPAD_RIGHT directly.
         if (inDrawer && current != null) {
-            if (current is SeekBar && (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            val isHorizontalSlider = current is SeekBar || current.tag == "pill_slider"
+            if (isHorizontalSlider && (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT)) {
                 return false
             }
 
