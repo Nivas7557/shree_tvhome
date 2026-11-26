@@ -1,6 +1,6 @@
 // Important instructions:
-// - Serve as the single source of truth for palettes, accents, tile sizes/shapes, and grid ranges.
-// - Compute high-contrast foreground text colors dynamically from surface luminance and hue.
+// - Act as the single source of truth for palettes, accents, tile options, clock styles, and location modes.
+// - Adding or editing clock styles or location modes here updates customization panels and widgets automatically.
 
 package shree.tvhome.core
 
@@ -120,6 +120,20 @@ object Themes {
         OptionSpec("circle", "● Circle"),
         OptionSpec("heart", "♥ Heart"),
         OptionSpec("classic", "■ Classic")
+    )
+
+    // Clock widget visual styles referenced directly by customization and weather stage.
+    val CLOCK_STYLES = listOf(
+        OptionSpec("classic", "Classic"),
+        OptionSpec("chrono", "Chrono"),
+        OptionSpec("minimal", "Orbit"),
+        OptionSpec("digital", "Digital")
+    )
+
+    // Weather location resolution modes ("auto" vs "manual").
+    val LOCATION_MODES = listOf(
+        OptionSpec("auto", "Automatic"),
+        OptionSpec("manual", "Manual")
     )
 
     // Right-side stage/drawer width options and shared layout bounds.
