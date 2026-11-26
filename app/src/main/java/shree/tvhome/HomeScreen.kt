@@ -1,35 +1,28 @@
 // Important instructions:
-// - Structure the home screen into proportional bands: TopHeader, Favorites, and Transparent Glossy-Rim App Shelf.
-// - Render a thick luminous gradient rim with zero interior fill, a glossy top control ribbon, and center-locked rows.
+// - Reserve clean top & bottom avatar clearance so TopHeaderBar never overlaps Favorites or crops at the screen top.
+// - Keep Favorites band fixed in height and render the 3-band CinemaConveyorShelf inside a transparent gradient-rim box.
 
 package shree.tvhome
 
-import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.View
-import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import shree.tvhome.core.AnimationController
 import shree.tvhome.core.AppSettings
 import shree.tvhome.core.LayoutMetrics
-import shree.tvhome.core.LiveBackdrop
 import shree.tvhome.core.Themes
 import shree.tvhome.design.AppsShelfDesign
-import shree.tvhome.design.SpatialGridDesign
-import kotlin.math.abs
 
 class HomeScreen(
     context: Context,
@@ -50,7 +43,6 @@ class HomeScreen(
     val favCount: TextView
     val appGrid: LinearLayout
     val allCount: TextView
-    private var centerScrollAnim: ObjectAnimator? = null
 
     init {
         orientation = VERTICAL
@@ -59,14 +51,16 @@ class HomeScreen(
 
         val hPad = LayoutMetrics.screenHorizontalPadding(context)
         val vPad = LayoutMetrics.screenVerticalPadding(context)
-        val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.056f, minDp = 36, maxDp = 50, horizontal = false)
-        val topClearance = maxOf(vPad, (barHeight * 0.66f).toInt())
-        val bandGap = LayoutMetrics.dynamicSpace(context, ratio = 0.014f, minDp = 8, maxDp = 18, horizontal = false)
+        val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.052f, minDp = 34, maxDp = 46, horizontal = false)
+        // Avatar diameter is ~2.25x barHeight, so give generous proportional top and bottom clearance around TopHeaderBar.
+        val topAvatarPad = maxOf(vPad, (barHeight * 0.72f).toInt())
+        val bottomAvatarGap = maxOf(LayoutMetrics.dynamicSpace(context, ratio = 0.018f, minDp = 12, maxDp = 24, horizontal = false), (barHeight * 0.58f).toInt())
+        val bandGap = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 8, maxDp = 16, horizontal = false)
 
-        setPadding(hPad, topClearance, hPad, vPad / 2)
+        setPadding(hPad, topAvatarPad, hPad, vPad / 2)
 
         topBar = TopHeaderBar(context, settings, callbacks)
-        addView(topBar, LayoutParams(-1, barHeight).apply { bottomMargin = bandGap })
+        addView(topBar, LayoutParams(-1, barHeight).apply { bottomMargin = bottomAvatarGap })
 
         contentArea = FrameLayout(context).apply {
             clipChildren = false
@@ -135,13 +129,29 @@ class HomeScreen(
         hiddenHScroll.addView(hiddenRow)
         hiddenSection.addView(hiddenHScroll)
         bodyContainer.addView(hiddenSection, LayoutParams(-1, -2).apply { bottomMargin = bandGap })
-
+        // Persistent Favorites ribbon with transparent backdrop and glossy header pill.
         favSection = LinearLayout(context).apply {
             orientation = VERTICAL
             clipChildren = false
             clipToPadding = false
         }
-        val favHeader = AppsShelfDesign.createHeader(context, "♥  FAVORITES & QUICK ACCESS", isFavoritesRow = true)
+        val favHeader = AppsShelfDesign.createHeader(context, "♥  FAVORITES & QUICK ACCESS", isFavoritesRow = true).apply {
+            val fPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.010f, minDp = 8, maxDp = 14, horizontal = true)
+            val fPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.005f, minDp = 4, maxDp = 8, horizontal = false)
+            setPadding(fPadH, fPadV, fPadH, fPadV)
+            val syncFavHeader = {
+                val glassCols = Themes.getGlassPanelColors(settings.tileColor, settings.accentColor, elevated = false)
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(LayoutMetrics.withAlpha(glassCols.first(), 165), LayoutMetrics.withAlpha(glassCols.last(), 185))
+                ).apply {
+                    cornerRadius = LayoutMetrics.dpF(context, 12f)
+                    setStroke(LayoutMetrics.dp(context, 1), Color.argb(85, 255, 255, 255))
+                }
+            }
+            syncFavHeader()
+            settings.addStyleListener(syncFavHeader)
+        }
         favCount = favHeader.findViewWithTag("count_tv")
         favSection.addView(favHeader)
 
@@ -160,10 +170,11 @@ class HomeScreen(
         favHScroll.addView(favRow)
         favSection.addView(favHScroll)
         bodyContainer.addView(favSection, LayoutParams(-1, -2).apply { bottomMargin = bandGap })
+
         val shelfPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 18, horizontal = true)
         val shelfPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.010f, minDp = 8, maxDp = 14, horizontal = false)
 
-        // Transparent App Shelf with thick luminous gradient rounding rim (Google TV / YouTube style).
+        // Transparent App Shelf with thick luminous gradient rounding rim (Google TV / YouTube rim style).
         val glossyShelfBox = object : LinearLayout(context) {
             private val rimOuterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
             private val rimInnerSheenPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -208,7 +219,6 @@ class HomeScreen(
                     (cornerR - inset).coerceAtLeast(4f),
                     rimInnerSheenPaint
                 )
-
                 super.onDraw(canvas)
             }
         }.apply {
@@ -220,12 +230,12 @@ class HomeScreen(
         }
         settings.addStyleListener { glossyShelfBox.invalidate() }
 
-        // Top glossy filled control ribbon inside the transparent rim box.
+        // Top 5% glossy filled control ribbon inside the transparent rim box.
         val allHeader = AppsShelfDesign.createHeader(
             context, "⊞  ALL APPS", isFavoritesRow = false, settings = settings, onSortChanged = onSortChanged
         ).apply {
             val rPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 16, horizontal = true)
-            val rPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.007f, minDp = 5, maxDp = 10, horizontal = false)
+            val rPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.006f, minDp = 5, maxDp = 9, horizontal = false)
             setPadding(rPadH, rPadV, rPadH, rPadV)
             val syncRibbonBg = {
                 val glassCols = Themes.getGlassPanelColors(settings.tileColor, settings.accentColor, elevated = true)
@@ -246,134 +256,23 @@ class HomeScreen(
         allCount = allHeader.findViewWithTag("count_tv")
         glossyShelfBox.addView(allHeader, LayoutParams(-1, -2).apply { bottomMargin = shelfPadV / 2 })
 
-        // Non-focusable Leanback-style center-locked viewport with active-row highlight and neighbor dimming.
-        val fadeEdgeLen = LayoutMetrics.dynamicSpace(context, ratio = 0.065f, minDp = 32, maxDp = 64, horizontal = false)
-        val scroll = object : ScrollView(context) {
-            override fun requestChildRectangleOnScreen(child: View, rectangle: Rect, immediate: Boolean): Boolean {
-                return false
-            }
-        }.apply {
-            isFocusable = false
-            isFocusableInTouchMode = false
-            descendantFocusability = FOCUS_AFTER_DESCENDANTS
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            clipChildren = true
-            clipToPadding = true
-            isVerticalFadingEdgeEnabled = true
-            setFadingEdgeLength(fadeEdgeLen)
-        }
-
-        val scrollContent = LinearLayout(context).apply {
-            orientation = VERTICAL
-            clipChildren = false
-            clipToPadding = false
-        }
+        // 3-band perspective conveyor stage (zero ScrollView, zero layout jumble).
         appGrid = LinearLayout(context).apply {
             orientation = VERTICAL
-            clipChildren = false
+            clipChildren = true
             clipToPadding = false
         }
-        scrollContent.addView(appGrid)
-        scroll.addView(scrollContent)
-        glossyShelfBox.addView(scroll, LayoutParams(-1, 0, 1f))
+        glossyShelfBox.addView(appGrid, LayoutParams(-1, 0, 1f))
         bodyContainer.addView(glossyShelfBox, LayoutParams(-1, 0, 1f))
-
-        val applyLeanbackRowFocusVisuals: (Int) -> Unit = { activeRow ->
-            val grid = appGrid.findViewWithTag<SpatialGridDesign>("spatial_engine")
-            if (grid != null && grid.columns > 0) {
-                for (i in 0 until grid.childCount) {
-                    val tile = grid.getChildAt(i)
-                    val rowIdx = i / grid.columns
-                    val distRows = abs(rowIdx - activeRow)
-                    val targetAlpha = when {
-                        activeRow < 0 -> if (rowIdx == 0) 1f else 0.48f
-                        distRows == 0 -> 1f
-                        distRows == 1 -> 0.48f
-                        else -> 0.24f
-                    }
-                    val targetScale = if (activeRow >= 0 && distRows == 0) 1f else 0.95f
-                    if (abs(tile.alpha - targetAlpha) > 0.02f) {
-                        tile.animate()
-                            .alpha(targetAlpha)
-                            .scaleX(targetScale)
-                            .scaleY(targetScale)
-                            .setDuration(240L)
-                            .setInterpolator(LayoutMetrics.SILKY_EASE)
-                            .start()
-                    }
-                }
-            }
-        }
-
-        scroll.viewTreeObserver.addOnScrollChangedListener {
-            LiveBackdrop.onScrollParallax(scroll.scrollY)
-        }
-
-        scroll.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
-            val vpH = bottom - top
-            val grid = appGrid.findViewWithTag<SpatialGridDesign>("spatial_engine")
-            val rowH = grid?.tileH ?: LayoutMetrics.dp(context, 92)
-            if (vpH > 0 && rowH > 0) {
-                val centerAnchorPad = maxOf(shelfPadV, ((vpH - rowH) / 2f).toInt())
-                if (scrollContent.paddingTop != centerAnchorPad || scrollContent.paddingBottom != centerAnchorPad) {
-                    scrollContent.setPadding(0, centerAnchorPad, 0, centerAnchorPad)
-                }
-                val focusedChild = grid?.findFocus()
-                val activeRow = if (focusedChild != null && grid.columns > 0) {
-                    grid.indexOfChild(focusedChild) / grid.columns
-                } else -1
-                applyLeanbackRowFocusVisuals(activeRow)
-            }
-        }
-
-        scroll.viewTreeObserver.addOnGlobalFocusChangeListener(
-            ViewTreeObserver.OnGlobalFocusChangeListener { _, newFocus ->
-                val grid = appGrid.findViewWithTag<SpatialGridDesign>("spatial_engine")
-                if (newFocus == null || grid == null || scroll.height <= 0 || !isDescendantOf(newFocus, grid)) {
-                    applyLeanbackRowFocusVisuals(-1)
-                    return@OnGlobalFocusChangeListener
-                }
-
-                val childIdx = grid.indexOfChild(newFocus)
-                val cols = grid.columns.coerceAtLeast(1)
-                val activeRow = if (childIdx >= 0) childIdx / cols else 0
-                val rowPitch = grid.tileH + grid.gap
-                val maxScroll = maxOf(0, scrollContent.height - scroll.height)
-                val targetScrollY = (activeRow * rowPitch).coerceIn(0, maxScroll)
-
-                if (abs(scroll.scrollY - targetScrollY) > dp(1)) {
-                    centerScrollAnim?.cancel()
-                    centerScrollAnim = ObjectAnimator.ofInt(scroll, "scrollY", scroll.scrollY, targetScrollY).apply {
-                        duration = 260L
-                        interpolator = LayoutMetrics.SILKY_EASE
-                        start()
-                    }
-                }
-                applyLeanbackRowFocusVisuals(activeRow)
-            }
-        )
     }
 
-    private fun isDescendantOf(targetView: View, container: View): Boolean {
-        var parent = targetView.parent
-        while (parent != null) {
-            if (parent === container) return true
-            parent = parent.parent
-        }
-        return false
-    }
-
-    // Reserves right-side stage width proportionally so app tiles stay clear of the widget/drawer.
     fun setRightStageInset(rightStageWidthPx: Int) {
         val gap = LayoutMetrics.dynamicSpace(context, ratio = 0.018f, minDp = 12, maxDp = 30, horizontal = true)
         bodyContainer.setPadding(0, 0, rightStageWidthPx + gap, 0)
     }
 
-    // Returns whether the hidden apps ribbon is currently visible.
     fun isHiddenRibbonVisible(): Boolean = hiddenSection.visibility == View.VISIBLE
 
-    // Populates and animates open the hidden apps ribbon.
     fun openHiddenRibbon(onUnhideApp: (String, String) -> Unit) {
         AppsShelfDesign.populateHiddenRibbon(context, settings, hiddenSection, hiddenRow, hiddenCount, onUnhideApp)
         if (hiddenSection.visibility == View.VISIBLE) {
@@ -387,7 +286,6 @@ class HomeScreen(
         }
     }
 
-    // Animates closed the hidden apps ribbon and notifies the caller to refresh focus/grid.
     fun closeHiddenRibbon(focusPkg: String? = null) {
         if (hiddenSection.visibility != View.VISIBLE) return
         hiddenSection.animate()
@@ -402,7 +300,4 @@ class HomeScreen(
             }
             .start()
     }
-
-    // Scales a base dp integer into display-proportional pixels.
-    private fun dp(value: Int): Int = LayoutMetrics.dp(context, value)
 }
