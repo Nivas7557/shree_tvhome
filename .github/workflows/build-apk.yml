@@ -28,17 +28,24 @@ jobs:
           distribution: temurin
           java-version: '17'
       # Important instructions:
-      # - Generate a deterministic debug keystore before building so Android allows in-place APK updates.
-      # - Keep alias, storepass, keypass, and dname identical across every CI run.
-      - name: Ensure consistent debug signing keystore
+      # - Cache debug.keystore across all CI runs so every APK shares the exact same signing certificate.
+      # - Once installed, all future version updates will overwrite in-place without uninstalling.
+      - name: Cache debug signing keystore
+        id: cache-keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: shree-tvhome-debug-keystore-v1
+
+      - name: Generate debug keystore if not cached
+        if: steps.cache-keystore.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/.android
-          rm -f ~/.android/debug.keystore
           keytool -genkey -v -keystore ~/.android/debug.keystore \
             -storepass android -alias androiddebugkey -keypass android \
             -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=ShreeTVHome,O=Android,C=IN"
-            
+
 
       # Set up Gradle build tool and caching.
       - name: Set up Gradle
