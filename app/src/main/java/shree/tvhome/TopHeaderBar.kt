@@ -234,7 +234,9 @@ class TopHeaderBar(
         greetingCard.attachOverlayBubble(nudgeOverlayBubble)
 
         addView(rightControls, LayoutParams(-2, barHeight, Gravity.END or Gravity.CENTER_VERTICAL))
-        addView(profileHeroGroup, LayoutParams(-2, barHeight, Gravity.START or Gravity.CENTER_VERTICAL))
+        // Allow profileHeroGroup to wrap the full circular avatar height cleanly without vertical clipping.
+        addView(profileHeroGroup, LayoutParams(-2, -2, Gravity.START or Gravity.CENTER_VERTICAL))
+
 
         post {
             val minGap = LayoutMetrics.dynamicSpace(context, ratio = 0.015f, minDp = 12, maxDp = 24, horizontal = true)
@@ -338,8 +340,9 @@ class TopHeaderBar(
 
     // Refreshes profile avatar bitmap or initial fallback safely.
     fun refreshProfileAvatar() {
-        val cleanName = settings.userName.ifBlank { "A" }
-        val initial = cleanName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "A"
+        // Resolve initial dynamically from AppSettings device/profile name without hardcoded letter fallbacks.
+        val cleanName = settings.userName.trim()
+        val initial = cleanName.firstOrNull()?.uppercaseChar()?.toString() ?: "★"
         avatarInitialTv.text = initial
 
         val picUriStr = settings.profilePicUri
