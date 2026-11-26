@@ -1,6 +1,6 @@
 // Important instructions:
+// - Render a crisp Clock Widget Settings & Live Preview panel without fixed paddings or forced focus requests.
 // - Drive clock styles and location modes directly from Themes (single source of truth).
-// - Support live preview updates and D-Pad friendly manual city selection without hardcoded style branches.
 
 package shree.tvhome.panels
 
@@ -13,7 +13,7 @@ import shree.tvhome.design.ClockWeatherCardDesign
 
 object ClockWidgetPanel {
 
-    // Builds the Clock Widget Settings panel with a live preview, style selector, and location controls.
+    // Builds the Clock Widget Settings panel with a live preview stage, style track, and location controls.
     fun build(
         context: Context,
         panel: LinearLayout,
@@ -24,14 +24,25 @@ object ClockWidgetPanel {
         panel.clipChildren = false
         panel.clipToPadding = false
 
-        PanelSurfaceKit.addSectionHeader(context, panel, settings, "LIVE PREVIEW")
+        val gapV = LayoutMetrics.dynamicSpace(context, ratio = 0.01f, minDp = 6, maxDp = 14, horizontal = false)
+        val previewH = LayoutMetrics.dynamicSpace(context, ratio = 0.28f, minDp = 175, maxDp = 260, horizontal = false)
+
+        PanelSurfaceKit.addSectionHeader(context, panel, settings, "LIVE WIDGET PREVIEW")
+        val previewStage = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            clipChildren = false
+            clipToPadding = false
+            background = PanelSurfaceKit.glassCardBg(context, settings.accentColor, false, settings.tileColor)
+            val padH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 8, maxDp = 16, horizontal = true)
+            val padV = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 8, maxDp = 16, horizontal = false)
+            setPadding(padH, padV, padH, padV)
+        }
         val previewWidget = ClockWeatherCardDesign(context, settings).apply {
+            isFocusable = false
             isClickable = false
         }
-        panel.addView(
-            previewWidget,
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 8) }
-        )
+        previewStage.addView(previewWidget, LinearLayout.LayoutParams(-1, previewH))
+        panel.addView(previewStage, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
 
         PanelSurfaceKit.addSectionHeader(context, panel, settings, "CLOCK STYLE")
         PanelSurfaceKit.addSegmentedTrack(
@@ -79,7 +90,7 @@ object ClockWidgetPanel {
             ) {
                 previewWidget.showLocationSelectorDialog()
             },
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 10) }
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV }
         )
 
         panel.addView(
@@ -88,9 +99,7 @@ object ClockWidgetPanel {
             ) {
                 onBack()
             },
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 16) }
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV * 2 }
         )
     }
-
-    private fun dp(ctx: Context, v: Int): Int = LayoutMetrics.dp(ctx, v)
 }
