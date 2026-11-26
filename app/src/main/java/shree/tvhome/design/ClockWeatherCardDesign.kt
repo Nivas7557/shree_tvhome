@@ -141,14 +141,12 @@ class ClockWeatherCardDesign(
         weatherCard.apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER
-            isFocusable = true
+            // Keep home stage widget non-focusable for D-Pad so Favorites D-Pad Down enters All Apps cleanly.
+            isFocusable = false
+            isFocusableInTouchMode = false
             isClickable = true
             setPadding(cardPadH, (cardPadV * 0.75f).toInt(), cardPadH, (cardPadV * 0.75f).toInt())
             background = weatherCardBg(false)
-            setOnFocusChangeListener { v, f ->
-                AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 6f)
-                v.background = weatherCardBg(f)
-            }
             setOnClickListener { showLocationSelectorDialog() }
         }
 
