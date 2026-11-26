@@ -1,6 +1,6 @@
 // Important instructions:
-// - Centralize homepage layout composition (TopHeaderBar, hidden ribbon, favorites, all apps, stage slot).
-// - Reuse shared metrics and avoid duplicate layout logic across screens.
+// - Derive screen padding and spacing proportionally from display metrics so every TV resolution looks balanced.
+// - Keep homepage layout composition centralized without hardcoded layout constants.
 
 package shree.tvhome
 
@@ -9,7 +9,6 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
@@ -42,15 +41,22 @@ class HomeScreen(
     val appGrid: LinearLayout
     val allCount: TextView
 
-    // Builds the top header bar, hidden apps ribbon, favorites row, and scrollable all-apps grid.
+    // Builds the top header bar, hidden ribbon, favorites shelf, and scrollable app grid with screen-scaled spacing.
     init {
         orientation = VERTICAL
         clipChildren = false
         clipToPadding = false
-        setPadding(dp(28), dp(24), dp(28), dp(12))
+
+        val hPad = LayoutMetrics.screenHorizontalPadding(context)
+        val vPad = LayoutMetrics.screenVerticalPadding(context)
+        val bottomPad = maxOf(dp(10), vPad / 2)
+        val headerGap = maxOf(dp(12), vPad / 2)
+        val barHeight = maxOf(dp(38), (context.resources.displayMetrics.heightPixels * 0.055f).toInt())
+
+        setPadding(hPad, vPad, hPad, bottomPad)
 
         topBar = TopHeaderBar(context, settings, callbacks)
-        addView(topBar, LayoutParams(-1, dp(42)).apply { bottomMargin = dp(18) })
+        addView(topBar, LayoutParams(-1, barHeight).apply { bottomMargin = headerGap })
 
         contentArea = FrameLayout(context).apply {
             clipChildren = false
@@ -68,7 +74,7 @@ class HomeScreen(
         }
         contentArea.addView(bodyContainer, FrameLayout.LayoutParams(-1, -1))
 
-        // Hidden apps ribbon shown only when hidden apps are being managed.
+        // Hidden apps ribbon shown only while managing hidden packages.
         hiddenSection = LinearLayout(context).apply {
             orientation = VERTICAL
             visibility = View.GONE
@@ -137,7 +143,9 @@ class HomeScreen(
         bodyContainer.addView(favSection)
 
         // All apps header and vertical scroll container with background parallax hook.
-        val allHeader = AppsShelfDesign.createHeader(context, "⊞  ALL APPS", isFavoritesRow = false, settings = settings, onSortChanged = onSortChanged)
+        val allHeader = AppsShelfDesign.createHeader(
+            context, "⊞  ALL APPS", isFavoritesRow = false, settings = settings, onSortChanged = onSortChanged
+        )
         allCount = allHeader.findViewWithTag("count_tv")
         bodyContainer.addView(allHeader, LayoutParams(-1, -2).apply { topMargin = dp(10) })
 
@@ -167,9 +175,10 @@ class HomeScreen(
         bodyContainer.addView(scroll, LayoutParams(-1, 0, 1f))
     }
 
-    // Reserves right-side width so app content never overlaps the clock/weather widget or drawer.
+    // Reserves right-side stage width proportionally so app tiles stay clear of the widget/drawer.
     fun setRightStageInset(rightStageWidthPx: Int) {
-        bodyContainer.setPadding(0, dp(4), rightStageWidthPx + dp(16), 0)
+        val gap = (context.resources.displayMetrics.widthPixels * 0.015f).toInt().coerceIn(dp(10), dp(28))
+        bodyContainer.setPadding(0, dp(4), rightStageWidthPx + gap, 0)
     }
 
     // Returns whether the hidden apps ribbon is currently visible.
