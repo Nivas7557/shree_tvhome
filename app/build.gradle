@@ -1,0 +1,59 @@
+// Important instructions:
+// - Keep APK lean by shrinking unused code/resources and stripping unneeded metadata packaging entries.
+// - Maintain consistent JVM target 17 across Java and Kotlin compilation.
+
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// Configure Android TV application SDK levels, Java/Kotlin targets, shrinking, and packaging rules.
+android {
+    namespace 'shree.tvhome'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'shree.tvhome'
+        minSdk 23
+        targetSdk 34
+        versionCode 1
+        versionName '3.0.0'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    // Enable shrinking and ProGuard rules to reduce APK size and strip unused code/resources.
+    buildTypes {
+        debug {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            signingConfig signingConfigs.debug
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    // Exclude unnecessary metadata and debug probe artifacts from final APK packaging.
+    packaging {
+        resources {
+            excludes += [
+                'META-INF/**',
+                'kotlin/**',
+                '**/*.kotlin_builtins',
+                '**/*.kotlin_module',
+                'DebugProbesKt.bin'
+            ]
+        }
+    }
+}
