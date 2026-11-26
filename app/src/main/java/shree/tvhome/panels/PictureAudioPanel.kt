@@ -1,6 +1,6 @@
 // Important instructions:
+// - Reference shared glass card styling from PanelSurfaceKit so palette/accent changes stay unified.
 // - Apply display brightness and eye-care warmth tint safely with system write checks.
-// - Probe hardware capabilities (Bluetooth, TV inputs, audio outputs, storage) dynamically.
 
 package shree.tvhome.panels
 
@@ -15,7 +15,6 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -113,10 +112,12 @@ object PictureAudioPanel {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(ctx, 12), dp(ctx, 9), dp(ctx, 12), dp(ctx, 9))
                 isFocusable = true
-                background = cardBg(ctx, settings.accentColor, isSel)
+                background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, isSel, settings.tileColor)
                 setOnFocusChangeListener { v, f ->
                     AnimationController.animateFocus(v, f, settings.motionStyle, 1.02f, 3f)
-                    v.background = cardBg(ctx, settings.accentColor, f || settings.pictureMode == preset.key)
+                    v.background = PanelSurfaceKit.glassCardBg(
+                        ctx, settings.accentColor, f || settings.pictureMode == preset.key, settings.tileColor
+                    )
                 }
                 setOnClickListener {
                     settings.pictureMode = preset.key
@@ -128,7 +129,9 @@ object PictureAudioPanel {
                         val active = PICTURE_MODES[i].key == settings.pictureMode
                         tView.text = if (active) "✓  ${PICTURE_MODES[i].label}" else "○  ${PICTURE_MODES[i].label}"
                         tView.setTextColor(if (active) settings.accentColor else Color.WHITE)
-                        cView.background = cardBg(ctx, settings.accentColor, cView.hasFocus() || active)
+                        cView.background = PanelSurfaceKit.glassCardBg(
+                            ctx, settings.accentColor, cView.hasFocus() || active, settings.tileColor
+                        )
                     }
                     rebuildCustomControls()
                 }
@@ -168,10 +171,12 @@ object PictureAudioPanel {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(ctx, 12), dp(ctx, 9), dp(ctx, 12), dp(ctx, 9))
                 isFocusable = true
-                background = cardBg(ctx, settings.accentColor, isSel)
+                background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, isSel, settings.tileColor)
                 setOnFocusChangeListener { v, f ->
                     AnimationController.animateFocus(v, f, settings.motionStyle, 1.02f, 3f)
-                    v.background = cardBg(ctx, settings.accentColor, f || isTimeoutMatch(activeTimeout, opt.millis))
+                    v.background = PanelSurfaceKit.glassCardBg(
+                        ctx, settings.accentColor, f || isTimeoutMatch(activeTimeout, opt.millis), settings.tileColor
+                    )
                 }
                 setOnClickListener {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.System.canWrite(ctx)) {
@@ -182,7 +187,9 @@ object PictureAudioPanel {
                                 val act = isTimeoutMatch(activeTimeout, baseTimeouts[idx].millis)
                                 tView.text = if (act) "✓  ${baseTimeouts[idx].label}" else "○  ${baseTimeouts[idx].label}"
                                 tView.setTextColor(if (act) settings.accentColor else Color.WHITE)
-                                cView.background = cardBg(ctx, settings.accentColor, cView.hasFocus() || act)
+                                cView.background = PanelSurfaceKit.glassCardBg(
+                                    ctx, settings.accentColor, cView.hasFocus() || act, settings.tileColor
+                                )
                             }
                             Toast.makeText(ctx, "Sleep timer: ${opt.label}", Toast.LENGTH_SHORT).show()
                         } catch (_: Exception) {}
@@ -222,10 +229,10 @@ object PictureAudioPanel {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(ctx, 12), dp(ctx, 9), dp(ctx, 12), dp(ctx, 9))
             isFocusable = true
-            background = cardBg(ctx, settings.accentColor, false)
+            background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, false, settings.tileColor)
             setOnFocusChangeListener { v, f ->
                 AnimationController.animateFocus(v, f, settings.motionStyle, 1.02f, 4f)
-                v.background = cardBg(ctx, settings.accentColor, f)
+                v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, f, settings.tileColor)
             }
         }
         val iconTv = makeText(ctx, if (initialMuted) "🔇" else "🔈", 14f, settings.accentColor, true).apply {
@@ -345,7 +352,7 @@ object PictureAudioPanel {
         val storageCard = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(ctx, 12), dp(ctx, 10), dp(ctx, 12), dp(ctx, 10))
-            background = cardBg(ctx, settings.accentColor, true)
+            background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, true, settings.tileColor)
         }
         storageCard.addView(makeText(ctx, "💾  Used: $usedGb / $totalGb ($usedPct%)", 10.5f, Color.WHITE, true))
         storageCard.addView(makeText(ctx, "Available Space: $freeGb Free", 9f, Color.rgb(125, 240, 175), true))
@@ -427,7 +434,7 @@ object PictureAudioPanel {
         val card = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(ctx, 12), dp(ctx, 9), dp(ctx, 12), dp(ctx, 9))
-            background = cardBg(ctx, settings.accentColor, false)
+            background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, false, settings.tileColor)
         }
         val top = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         val pct = makeText(ctx, "$initPct%", 10.5f, settings.accentColor, true)
@@ -439,7 +446,9 @@ object PictureAudioPanel {
             max = 100
             progress = initPct
             isFocusable = true
-            setOnFocusChangeListener { _, f -> card.background = cardBg(ctx, settings.accentColor, f) }
+            setOnFocusChangeListener { _, f ->
+                card.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, f, settings.tileColor)
+            }
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(s: SeekBar?, p: Int, user: Boolean) {
                     pct.text = "$p%"
@@ -461,7 +470,7 @@ object PictureAudioPanel {
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             isFocusable = true
-            background = cardBg(ctx, settings.accentColor, true)
+            background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, true, settings.tileColor)
             setOnFocusChangeListener { v, f -> AnimationController.animateFocus(v, f, settings.motionStyle, 1.03f, 3f) }
             setOnClickListener { onBack() }
         }
@@ -469,15 +478,6 @@ object PictureAudioPanel {
             topMargin = dp(ctx, 10)
             bottomMargin = dp(ctx, 20)
         })
-    }
-
-    private fun cardBg(ctx: Context, accent: Int, active: Boolean) = GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        if (active) intArrayOf(LayoutMetrics.withAlpha(accent, 115), Color.argb(65, 255, 255, 255))
-        else intArrayOf(Color.argb(52, 255, 255, 255), Color.argb(26, 255, 255, 255))
-    ).apply {
-        cornerRadius = LayoutMetrics.dpF(ctx, 14f)
-        setStroke(dp(ctx, if (active) 2 else 1), if (active) accent else Color.argb(65, 255, 255, 255))
     }
 
     private fun makeText(ctx: Context, v: String, sz: Float, col: Int, bld: Boolean) = TextView(ctx).apply {
