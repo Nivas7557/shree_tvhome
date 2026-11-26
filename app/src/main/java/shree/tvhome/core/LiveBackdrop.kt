@@ -1,5 +1,5 @@
 // Important instructions:
-// - Decode gallery wallpapers with sampling and RGB_565 to minimize RAM usage on TV devices.
+// - Release previous wallpaper bitmaps on replacement and sample gallery photos to keep memory under 1 MB budget.
 // - Drive dynamic scenes and time-based palettes automatically without hardcoded state loops.
 
 package shree.tvhome.core
@@ -152,19 +152,29 @@ object LiveBackdrop {
     fun getScene(key: String): SceneSpec = sceneMap[key] ?: SCENES.last()
 
     private var activeWallpaperView: ImageView? = null
+    private var activeWallpaperBitmap: Bitmap? = null
     private var activePhotoAuraView: PhotoWeatherAuraView? = null
     private var activeCanvasView: DynamicCanvasView? = null
     private var baseZoom = 1.08f
     private var baseOffsetY = 0
 
+    // Detaches and recycles any previously loaded wallpaper bitmap before applying a new backdrop.
+    private fun releasePreviousWallpaper() {
+        activeWallpaperView?.setImageDrawable(null)
+        activeWallpaperView = null
+        activeWallpaperBitmap?.let { bmp ->
+            if (!bmp.isRecycled) bmp.recycle()
+        }
+        activeWallpaperBitmap = null
+    }
+
     // Applies either a sampled user gallery image or the live animated canvas backdrop.
     fun apply(ctx: Context, root: FrameLayout, settings: AppSettings) {
-        val sp = settings.prefs
-        val wallpaper = sp.getString(AppSettings.PREF_WALLPAPER, null)
-        activeWallpaperView = null
+        releasePreviousWallpaper()
         activePhotoAuraView = null
         activeCanvasView = null
 
+        val wallpaper = settings.prefs.getString(AppSettings.PREF_WALLPAPER, null)
         if (wallpaper != null) {
             root.background = null
             val image = ImageView(ctx).apply {
@@ -180,8 +190,12 @@ object LiveBackdrop {
                 translationX = settings.wpOffsetX.toFloat()
                 translationY = baseOffsetY.toFloat()
                 val bmp = decodeSampledBitmapFromUri(ctx, Uri.parse(wallpaper))
-                if (bmp != null) setImageBitmap(bmp)
-                else try { setImageURI(Uri.parse(wallpaper)) } catch (_: Exception) {}
+                if (bmp != null) {
+                    activeWallpaperBitmap = bmp
+                    setImageBitmap(bmp)
+                } else {
+                    try { setImageURI(Uri.parse(wallpaper)) } catch (_: Exception) {}
+                }
             }
             root.addView(image, 0, FrameLayout.LayoutParams(-1, -1))
             activeWallpaperView = image
@@ -199,7 +213,7 @@ object LiveBackdrop {
         }
     }
 
-    // Decodes a sampled bitmap scaled to the display dimensions to avoid oversized allocations.
+    // Decodes a sampled RGB_565 bitmap scaled to display size to keep memory usage light.
     private fun decodeSampledBitmapFromUri(ctx: Context, uri: Uri): Bitmap? {
         return try {
             val dm = ctx.resources.displayMetrics
