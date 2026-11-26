@@ -1,6 +1,6 @@
 // Important instructions:
-// - Serve as the shared surface kit for section headers, glass cards, segmented tracks, and sliders.
-// - Automatically adapt text and stroke colors to AppSettings and Themes without manual duplication.
+// - Serve as the shared surface kit for section headers, glass cards, segmented tracks, and D-Pad pill sliders.
+// - Support direct DPAD_LEFT / DPAD_RIGHT adjustments on pill sliders cleanly.
 
 package shree.tvhome.panels
 
@@ -29,7 +29,6 @@ import java.util.Locale
 
 object PanelSurfaceKit {
 
-    // Adds a theme-aware section header that automatically updates when palette or accent changes.
     fun addSectionHeader(ctx: Context, parent: LinearLayout, settings: AppSettings, label: String) {
         val tv = TextView(ctx).apply {
             text = label.uppercase(Locale.ROOT)
@@ -55,7 +54,6 @@ object PanelSurfaceKit {
         })
     }
 
-    // Builds a glass card background tinted by the active palette and accent color.
     fun glassCardBg(ctx: Context, accent: Int, active: Boolean, themeKey: String? = null) = GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,
         if (active) {
@@ -80,7 +78,6 @@ object PanelSurfaceKit {
         )
     }
 
-    // Adds a horizontal segmented option bar synchronized with AppSettings style changes.
     fun addSegmentedTrack(
         ctx: Context,
         parent: LinearLayout,
@@ -155,7 +152,7 @@ object PanelSurfaceKit {
         parent.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 6) })
     }
 
-    // Adds an interactive percentage pill slider supporting D-Pad left/right and touch scrubbing.
+    // Adds a D-Pad controllable percentage pill slider (DPAD_LEFT / DPAD_RIGHT adjust by 5%).
     fun addGlossyPillSlider(
         ctx: Context,
         parent: LinearLayout,
@@ -178,6 +175,7 @@ object PanelSurfaceKit {
             private var isFocusedState = false
 
             init {
+                tag = "pill_slider"
                 isFocusable = true
                 isClickable = true
                 settings.addStyleListener { invalidate() }
@@ -207,7 +205,6 @@ object PanelSurfaceKit {
                 }
             }
 
-            // Scrubs slider percentage smoothly on pointer down/move events.
             override fun onTouchEvent(event: MotionEvent): Boolean {
                 if (event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_MOVE) {
                     val ratio = (event.x / width.coerceAtLeast(1)).coerceIn(0f, 1f)
@@ -219,7 +216,6 @@ object PanelSurfaceKit {
                 return super.onTouchEvent(event)
             }
 
-            // Draws the pill track, accent fill bar, border stroke, title, and percentage readout.
             override fun onDraw(canvas: Canvas) {
                 val w = width.toFloat()
                 val h = height.toFloat()
@@ -264,12 +260,10 @@ object PanelSurfaceKit {
         parent.addView(sliderView, LinearLayout.LayoutParams(-1, dp(ctx, 40)).apply { bottomMargin = dp(ctx, 7) })
     }
 
-    // Creates a circular color orb preview view for palette selection cards.
     fun createThemeOrbView(ctx: Context, colors: IntArray, selected: Boolean): View = object : View(ctx) {
         private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
-        // Renders gradient fill and selection ring inside the circular orb.
         override fun onDraw(canvas: Canvas) {
             val cx = width / 2f
             val cy = height / 2f
@@ -283,7 +277,6 @@ object PanelSurfaceKit {
         }
     }
 
-    // Creates a standard action row with icon, title, subtitle, and trailing indicator.
     fun makeActionRow(
         ctx: Context,
         settings: AppSettings,

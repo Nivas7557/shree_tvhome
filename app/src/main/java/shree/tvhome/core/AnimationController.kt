@@ -161,9 +161,10 @@ object AnimationController {
         }
     }
 
-    // Plays a motion preview on a panel when the user picks or switches motion styles.
+// Plays a safe motion preview on a panel without resetting layout or focus state.
     fun playDemoPreview(panel: View, style: String) {
-        resetTransform(panel)
+        if (!panel.isAttachedToWindow) return
+        panel.animate().cancel()
         ensureCameraDistance(panel)
         val spec = getSpec(style)
         panel.translationZ = 0f

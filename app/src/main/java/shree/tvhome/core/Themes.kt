@@ -1,11 +1,13 @@
 // Important instructions:
-// - Act as the single source of truth for palettes, accents, tile options, clock styles, and location modes.
-// - Define clock style rules/ratios here so ClockWeatherCardDesign renders any added/edited/removed style without hardcoding.
+// - Act as the single source of truth for palettes, rich gradient accents, tile options, clock styles, and location modes.
+// - Keep accent gradients natural with multi-stop color blends rather than flat single colors.
 
 package shree.tvhome.core
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Shader
 import android.net.wifi.WifiManager
 
 object Themes {
@@ -18,10 +20,12 @@ object Themes {
         val focusedColors: IntArray
     )
 
+    // Natural multi-stop gradient accent specification for rich visual depth.
     data class AccentSpec(
         val key: String,
         val label: String,
-        val color: Int
+        val color: Int,
+        val gradientColors: IntArray
     )
 
     data class TileSizeSpec(
@@ -37,7 +41,6 @@ object Themes {
         val label: String
     )
 
-    // Data-driven specification for each clock style so renderer logic never hardcodes style names.
     data class ClockStyleSpec(
         val key: String,
         val label: String,
@@ -115,24 +118,40 @@ object Themes {
         )
     )
 
-    // Accent choices used for focus borders, highlights, and panel accents.
+    // Natural multi-stop gradient accents inspired by organic canvas color harmonies.
     val ACCENTS = listOf(
-        AccentSpec("royal", "Royal", Color.rgb(92, 184, 255)),
-        AccentSpec("emerald", "Mint", Color.rgb(46, 232, 138)),
-        AccentSpec("magenta", "Pink", Color.rgb(255, 110, 145)),
-        AccentSpec("purple", "Purple", Color.rgb(185, 135, 255)),
-        AccentSpec("sunset", "Gold", Color.rgb(255, 195, 75)),
-        AccentSpec("cyan", "Aqua", Color.rgb(75, 235, 245))
+        AccentSpec(
+            "aurora", "Aurora", Color.rgb(64, 216, 198),
+            intArrayOf(Color.rgb(42, 145, 235), Color.rgb(52, 228, 182), Color.rgb(155, 245, 145))
+        ),
+        AccentSpec(
+            "ember", "Ember", Color.rgb(255, 122, 78),
+            intArrayOf(Color.rgb(232, 56, 108), Color.rgb(255, 128, 64), Color.rgb(255, 204, 82))
+        ),
+        AccentSpec(
+            "orchid", "Orchid", Color.rgb(198, 112, 255),
+            intArrayOf(Color.rgb(112, 78, 245), Color.rgb(208, 92, 235), Color.rgb(255, 134, 182))
+        ),
+        AccentSpec(
+            "lagoon", "Lagoon", Color.rgb(72, 196, 255),
+            intArrayOf(Color.rgb(24, 102, 218), Color.rgb(48, 196, 245), Color.rgb(118, 245, 225))
+        ),
+        AccentSpec(
+            "solar", "Solar", Color.rgb(255, 192, 68),
+            intArrayOf(Color.rgb(245, 136, 42), Color.rgb(255, 196, 68), Color.rgb(255, 238, 138))
+        ),
+        AccentSpec(
+            "meadow", "Meadow", Color.rgb(92, 232, 132),
+            intArrayOf(Color.rgb(28, 168, 112), Color.rgb(88, 224, 128), Color.rgb(188, 245, 108))
+        )
     )
 
-    // Tile size presets defining badge dimensions, desired grid cell size, and hidden-row scale.
     val TILE_SIZES = listOf(
         TileSizeSpec("small", "Small", badgeDp = 64, desiredGridDp = 86, hiddenScale = 0.75f),
         TileSizeSpec("medium", "Medium", badgeDp = 78, desiredGridDp = 104, hiddenScale = 0.85f),
         TileSizeSpec("large", "Large", badgeDp = 94, desiredGridDp = 124, hiddenScale = 0.96f)
     )
 
-    // Supported tile outline shapes.
     val TILE_SHAPES = listOf(
         OptionSpec("squircle", "◐ Squircle"),
         OptionSpec("circle", "● Circle"),
@@ -202,29 +221,57 @@ object Themes {
         )
     )
 
-    // Weather location resolution modes ("auto" vs "manual").
     val LOCATION_MODES = listOf(
         OptionSpec("auto", "Automatic"),
         OptionSpec("manual", "Manual")
     )
 
-    // Right-side stage/drawer width options and shared layout bounds.
+    // Single source of truth for app tile nameplate visibility modes.
+    val NAMEPLATE_MODES = listOf(
+        OptionSpec("always", "Always"),
+        OptionSpec("focus", "On Focus"),
+        OptionSpec("hidden", "Hidden")
+    )
+
+    // Proportional minimum width ratios for adaptive panel grids (no fixed column counts).
+    const val MIN_SUMMARY_CARD_DP = 112
+    const val MIN_TEXT_CHIP_DP = 64
+    const val MIN_SWATCH_ORB_DP = 40
+
     val PANEL_WIDTH_OPTIONS = listOf(20, 25, 30, 35)
     const val PANEL_MIN_WIDTH_DP = 165
     val GRID_COL_RANGE = 3..8
 
     private val themeMap by lazy { THEMES.associateBy { it.key } }
     private val sizeMap by lazy { TILE_SIZES.associateBy { it.key } }
-    private val accentMap by lazy { ACCENTS.associateBy { it.key.lowercase() } }
+    private val accentByColorMap by lazy { ACCENTS.associateBy { it.color } }
+    private val accentByKeyOrLabelMap by lazy {
+        buildMap {
+            ACCENTS.forEach { spec ->
+                put(spec.key.lowercase(), spec)
+                put(spec.label.lowercase(), spec)
+            }
+        }
+    }
     private val clockStyleMap by lazy { CLOCK_STYLES.associateBy { it.key } }
 
-    // Looks up a theme specification by key, falling back to the default theme.
     fun getTheme(key: String?): ThemeSpec = themeMap[key] ?: THEMES.first()
 
-    // Looks up a clock style specification by key, falling back to the first style in CLOCK_STYLES.
     fun getClockStyle(key: String?): ClockStyleSpec = clockStyleMap[key] ?: CLOCK_STYLES.first()
 
-    // Calculates mean relative luminance across a gradient color array.
+    // Resolves the full AccentSpec for a given accent color or key/label.
+    fun getAccentSpec(accentColor: Int, name: String? = null): AccentSpec {
+        accentByColorMap[accentColor]?.let { return it }
+        name?.lowercase()?.let { key -> accentByKeyOrLabelMap[key]?.let { return it } }
+        return ACCENTS.first()
+    }
+
+    // Creates a linear shader across a gradient accent's color stops.
+    fun createAccentShader(width: Float, height: Float, accentColor: Int): LinearGradient {
+        val spec = getAccentSpec(accentColor)
+        return LinearGradient(0f, 0f, width.coerceAtLeast(1f), height.coerceAtLeast(1f), spec.gradientColors, null, Shader.TileMode.CLAMP)
+    }
+
     private fun computeAverageLuminance(colors: IntArray): Float {
         if (colors.isEmpty()) return 0f
         var sum = 0f
@@ -237,10 +284,8 @@ object Themes {
         return sum / colors.size
     }
 
-    // Determines whether a surface palette is bright enough to require dark foreground text.
     fun isLightSurface(colors: IntArray): Boolean = computeAverageLuminance(colors) > 0.45f
 
-    // Computes a readable primary or secondary text color matched to the surface's hue.
     fun getAdaptiveTextColor(colors: IntArray, secondary: Boolean = false): Int {
         val sample = colors.firstOrNull() ?: return Color.WHITE
         val hsv = FloatArray(3)
@@ -256,21 +301,17 @@ object Themes {
         }
     }
 
-    // Returns primary readable text color for a given theme key.
     fun getPrimaryTextColor(themeKey: String?): Int =
         getAdaptiveTextColor(getTheme(themeKey).normalColors, secondary = false)
 
-    // Returns secondary readable text color for a given theme key.
     fun getSecondaryTextColor(themeKey: String?): Int =
         getAdaptiveTextColor(getTheme(themeKey).normalColors, secondary = true)
 
-    // Returns normal or focused gradient colors for a theme key.
     fun getTopBottomColors(themeKey: String?, focused: Boolean): IntArray {
         val spec = getTheme(themeKey)
         return if (focused) spec.focusedColors else spec.normalColors
     }
 
-    // Builds glass panel gradient colors blended with the active accent color.
     fun getGlassPanelColors(themeKey: String?, accentColor: Int, elevated: Boolean = false): IntArray {
         val base = getTheme(themeKey).normalColors
         val topCol = base.firstOrNull() ?: Color.rgb(22, 34, 72)
@@ -282,13 +323,10 @@ object Themes {
         return intArrayOf(c1, c2, c3)
     }
 
-    // Looks up a tile size specification by key, defaulting to "medium".
     fun getTileSizeSpec(key: String?): TileSizeSpec = sizeMap[key] ?: sizeMap["medium"] ?: TILE_SIZES.first()
 
-    // Resolves an accent RGB integer from a key or display label.
-    fun getAccentByName(name: String?): Int = accentMap[name?.lowercase()]?.color ?: ACCENTS.first().color
+    fun getAccentByName(name: String?): Int = name?.lowercase()?.let { accentByKeyOrLabelMap[it]?.color } ?: ACCENTS.first().color
 
-    // Reads the active Wi-Fi SSID when connected, or returns "Wi-Fi" as a clean fallback.
     fun getConnectedSsid(ctx: Context): String {
         return try {
             val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
