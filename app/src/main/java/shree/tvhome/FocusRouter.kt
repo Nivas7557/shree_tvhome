@@ -1,6 +1,6 @@
 // Important instructions:
-// - Route D-Pad focus naturally without forced focus traps or hardcoded tag checks.
-// - Allow horizontal D-Pad adjustment on slider controls (SeekBar or pill_slider tag) without trapping focus.
+// - Never force requestFocus() calls; allow Android's native D-Pad focus search to move naturally.
+// - Allow horizontal D-Pad key handling on sliders (SeekBar or pill_slider) without focus traps.
 
 package shree.tvhome
 
@@ -12,7 +12,7 @@ import android.widget.SeekBar
 
 object FocusRouter {
 
-    // Finds the first visible, enabled, D-Pad-focusable view in a view subtree.
+    // Finds the first visible, enabled, non-touch-only focusable view in a subtree without requesting focus.
     fun findFirstFocusable(root: View): View? {
         if (root.visibility != View.VISIBLE || !root.isEnabled) return null
         if (root.isFocusable && !root.isFocusableInTouchMode) {
@@ -27,20 +27,7 @@ object FocusRouter {
         return null
     }
 
-    // Moves focus to the first focusable control inside the active panel or drawer container.
-    fun focusFirstInPanel(panel: ViewGroup?, fallbackContainer: ViewGroup? = null): Boolean {
-        val target = (panel?.let { findFirstFocusable(it) })
-            ?: (fallbackContainer?.let { findFirstFocusable(it) })
-            ?: return false
-        target.post {
-            if (target.isAttachedToWindow && target.visibility == View.VISIBLE) {
-                target.requestFocus()
-            }
-        }
-        return true
-    }
-
-    // Handles directional D-Pad movement within open drawers and transitions back to the header.
+    // Routes D-Pad keys naturally when a drawer panel is open without forcing focus traps.
     fun handleKeyEvent(
         event: KeyEvent,
         isDrawerOpen: Boolean,
@@ -62,7 +49,7 @@ object FocusRouter {
         val inDrawer = drawerFocus != null
         val current = drawerFocus ?: topNavBar.findFocus()
 
-        // Let slider controls (SeekBar or custom pill_slider) handle left/right D-Pad directly.
+        // Allow slider views to process left/right D-Pad events directly.
         if (inDrawer && current != null && (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT)) {
             if (current is SeekBar || current.tag == "pill_slider") {
                 return false
@@ -71,24 +58,13 @@ object FocusRouter {
 
         if (event.action != KeyEvent.ACTION_DOWN) return false
 
-        if (inDrawer && current != null) {
-            if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                val dir = if (code == KeyEvent.KEYCODE_DPAD_LEFT) View.FOCUS_LEFT else View.FOCUS_RIGHT
-                val rowParent = current.parent as? ViewGroup
-                val nextSibling = rowParent?.let { FocusFinder.getInstance().findNextFocus(it, current, dir) }
-                if (nextSibling != null && nextSibling !== current) {
-                    nextSibling.requestFocus()
-                }
-                return true
-            }
+        // Let FocusFinder resolve natural sibling or container focus without forced focus jumps.
+        val container = when {
+            inDrawer -> drawerLayout
+            code == KeyEvent.KEYCODE_DPAD_DOWN -> activePanel ?: drawerLayout
+            else -> topNavBar
         }
 
-        if (code == KeyEvent.KEYCODE_DPAD_DOWN && !inDrawer && current != null) {
-            focusFirstInPanel(activePanel, drawerLayout)
-            return true
-        }
-
-        val container = if (inDrawer) drawerLayout else topNavBar
         if (current != null) {
             val dir = when (code) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> View.FOCUS_LEFT
@@ -98,22 +74,13 @@ object FocusRouter {
             }
             val next = FocusFinder.getInstance().findNextFocus(container, current, dir)
             if (next != null && next !== current) {
-                next.requestFocus()
-                return true
+                return false
             }
-
-            if (inDrawer && code == KeyEvent.KEYCODE_DPAD_UP) {
-                val parentBtn = if (activeParentTag.isNotEmpty()) {
-                    topNavBar.findViewWithTag<View>(activeParentTag)
-                } else {
-                    findFirstFocusable(topNavBar)
-                }
-                parentBtn?.requestFocus()
-                return true
+            if (inDrawer && code == KeyEvent.KEYCODE_DPAD_UP && activeParentTag.isNotEmpty()) {
+                return false
             }
-            return true
         }
 
-        return focusFirstInPanel(activePanel, drawerLayout)
+        return false
     }
 }
