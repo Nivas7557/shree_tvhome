@@ -53,7 +53,10 @@ object LiveBackdrop {
         val skyColors: IntArray,
         val primaryGlowColors: IntArray,
         val secondaryGlowColors: IntArray
-    )
+    ) {
+        val particleKind: String get() = renderStyle
+    }
+
 
     // Smart automatic wallpaper modes.
     val SMART_MODES = listOf(
@@ -448,9 +451,9 @@ object LiveBackdrop {
                 else -> Triple(night, night, 0f)
             }
             return intArrayOf(
-                blendColor(from, to, ratio),
-                blendColor(from, to, ratio),
-                blendColor(from, to, ratio)
+                blendColor(from[0], to[0], ratio),
+                blendColor(from[1], to[1], ratio),
+                blendColor(from[2], to[2], ratio)
             )
         }
 
@@ -581,10 +584,6 @@ object LiveBackdrop {
             // Subtle cinema vignette around screen edges so foreground glass tiles pop effortlessly.
             canvas.drawRect(0f, 0f, w, h, vignettePaint)
         }
-
-        // Flowing multi-layered northern lights ribbons across the upper sky.
-        private fun drawAuroraCurtains(canvas: Canvas, w: Float, h: Float) {
-            val ribbonColors = listOf(
         // Flowing multi-layered northern lights ribbons across the upper sky.
         private fun drawAuroraCurtains(canvas: Canvas, w: Float, h: Float) {
             val ribbonColors = listOf(
@@ -605,22 +604,15 @@ object LiveBackdrop {
                 wavePath.lineTo(w, baseY + h * 0.28f)
                 wavePath.lineTo(0f, baseY + h * 0.28f)
                 wavePath.close()
-
                 featurePaint.shader = LinearGradient(0f, baseY - h * 0.08f, 0f, baseY + h * 0.28f, cols, null, Shader.TileMode.CLAMP)
                 canvas.drawPath(wavePath, featurePaint)
             }
         }
-
         // Layered cosmic nebula dust bands across diagonal space.
         private fun drawNebulaClouds(canvas: Canvas, w: Float, h: Float) {
             featurePaint.shader = LinearGradient(
                 0f, h * 0.15f, w, h * 0.85f,
-                intArrayOf(
-                    Color.TRANSPARENT,
-                    Color.argb(75, 215, 72, 185),
-                    Color.argb(85, 68, 165, 245),
-                    Color.TRANSPARENT
-                ),
+                intArrayOf(Color.TRANSPARENT, Color.argb(75, 215, 72, 185), Color.argb(85, 68, 165, 245), Color.TRANSPARENT),
                 floatArrayOf(0.05f, 0.38f, 0.68f, 0.96f),
                 Shader.TileMode.CLAMP
             )
@@ -629,7 +621,6 @@ object LiveBackdrop {
             canvas.drawRect(0f, 0f, w, h, featurePaint)
             canvas.restore()
         }
-
         // Warm low-sun horizon with shimmering water reflection ripples below.
         private fun drawGoldenHorizon(canvas: Canvas, w: Float, h: Float) {
             val horizonY = h * 0.64f - parallaxY * 0.2f
@@ -640,7 +631,6 @@ object LiveBackdrop {
                 null, Shader.TileMode.CLAMP
             )
             canvas.drawCircle(sunX, horizonY, w * 0.28f, featurePaint)
-
             featurePaint.shader = LinearGradient(
                 0f, horizonY, 0f, h,
                 intArrayOf(Color.argb(95, 245, 118, 58), Color.argb(145, 28, 16, 48)),
@@ -648,7 +638,6 @@ object LiveBackdrop {
             )
             canvas.drawRect(0f, horizonY, w, h, featurePaint)
         }
-
         // Diagonal underwater volumetric light beams descending from the ocean surface.
         private fun drawAbyssalLightRays(canvas: Canvas, w: Float, h: Float) {
             for (i in 0 until 4) {
@@ -659,7 +648,6 @@ object LiveBackdrop {
                 wavePath.lineTo(topX + w * 0.16f, h)
                 wavePath.lineTo(topX - w * 0.06f, h)
                 wavePath.close()
-
                 featurePaint.shader = LinearGradient(
                     topX, 0f, topX + w * 0.05f, h * 0.85f,
                     intArrayOf(Color.argb(54, 92, 245, 228), Color.TRANSPARENT),
@@ -668,22 +656,18 @@ object LiveBackdrop {
                 canvas.drawPath(wavePath, featurePaint)
             }
         }
-
         // Luminous moon with atmospheric halo ring and drifting night mist.
         private fun drawRoyalEclipse(canvas: Canvas, w: Float, h: Float) {
             val moonX = w * 0.52f
             val moonY = h * 0.16f - parallaxY * 0.35f
             val moonR = 26f * resources.displayMetrics.density
-
             moonHaloPaint.strokeWidth = LayoutMetrics.dpF(context, 1.4f)
             moonHaloPaint.color = Color.argb(42, 210, 230, 255)
             canvas.drawCircle(moonX, moonY, moonR * 1.65f + sin(phase) * 3f, moonHaloPaint)
-
             canvas.drawCircle(moonX, moonY, moonR, moonDiscPaint)
             canvas.drawCircle(moonX - moonR * 0.32f, moonY - moonR * 0.18f, moonR * 0.22f, craterPaint)
             canvas.drawCircle(moonX + moonR * 0.28f, moonY + moonR * 0.24f, moonR * 0.16f, craterPaint)
         }
-
         // Soft distant thunderhead glow behind rain streaks.
         private fun drawMonsoonMist(canvas: Canvas, w: Float, h: Float) {
             val flashPulse = sin(phase * 3.0f)
@@ -697,7 +681,6 @@ object LiveBackdrop {
                 canvas.drawRect(0f, 0f, w, h, featurePaint)
             }
         }
-
         override fun onDetachedFromWindow() {
             super.onDetachedFromWindow()
             flowAnim?.cancel()
