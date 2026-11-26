@@ -1,6 +1,6 @@
 // Important instructions:
-// - Compute adaptive UI scaling and proportional screen paddings dynamically across TV screen sizes.
-// - Keep shared interpolators, app discovery, and color helpers in one single source of truth.
+// - Derive all scaling, dynamic spacing, and paddings from display metrics so no TV screen uses fixed constants.
+// - Keep shared interpolators, app discovery, and color blending in one central place.
 
 package shree.tvhome.core
 
@@ -27,7 +27,7 @@ object LayoutMetrics {
         selfPackageName: String = ""
     ) {
         val query = Intent(Intent.ACTION_MAIN).apply { addCategory(category) }
-        val list = pm.queryIntentActivities(query, 0)
+        val list = try { pm.queryIntentActivities(query, 0) } catch (_: Exception) { emptyList() }
         for (app in list) {
             val pkg = app.activityInfo?.packageName ?: continue
             val name = app.activityInfo?.name ?: continue
@@ -36,7 +36,7 @@ object LayoutMetrics {
         }
     }
 
-    // Computes an adaptive scale factor so UI elements fit 720p, 1080p, and 4K TV screens proportionally.
+    // Computes an adaptive scale factor from display width in dp across 720p, 1080p, and 4K screens.
     fun calculateAdaptiveScale(context: Context): Float {
         val dm = context.resources.displayMetrics
         val maxSidePx = maxOf(dm.widthPixels, dm.heightPixels)
@@ -44,24 +44,28 @@ object LayoutMetrics {
         return (widthDp / 960f).coerceIn(0.82f, 1.18f)
     }
 
-    // Computes responsive horizontal/vertical screen padding from display dimensions instead of fixed values.
-    fun screenHorizontalPadding(context: Context): Int {
-        val w = context.resources.displayMetrics.widthPixels
-        return (w * 0.028f).roundToInt().coerceIn(dp(context, 16), dp(context, 48))
+    // Computes a screen-proportional spacing value (horizontal or vertical) bounded dynamically.
+    fun dynamicSpace(context: Context, ratio: Float, minDp: Int, maxDp: Int, horizontal: Boolean = true): Int {
+        val dm = context.resources.displayMetrics
+        val basePx = if (horizontal) dm.widthPixels else dm.heightPixels
+        val scaled = (basePx * ratio).roundToInt()
+        return scaled.coerceIn(dp(context, minDp), dp(context, maxDp))
     }
 
-    // Computes responsive top/bottom screen padding from display height.
-    fun screenVerticalPadding(context: Context): Int {
-        val h = context.resources.displayMetrics.heightPixels
-        return (h * 0.032f).roundToInt().coerceIn(dp(context, 14), dp(context, 36))
-    }
+    // Computes responsive horizontal screen margin/padding from display width.
+    fun screenHorizontalPadding(context: Context): Int =
+        dynamicSpace(context, ratio = 0.028f, minDp = 16, maxDp = 48, horizontal = true)
 
-    // Converts a base dp value into adaptively scaled pixels.
+    // Computes responsive vertical screen margin/padding from display height.
+    fun screenVerticalPadding(context: Context): Int =
+        dynamicSpace(context, ratio = 0.032f, minDp = 14, maxDp = 36, horizontal = false)
+
+    // Converts a base dp unit into density- and screen-scaled pixels.
     fun dp(context: Context, value: Int): Int {
         return (value * context.resources.displayMetrics.density * calculateAdaptiveScale(context)).roundToInt()
     }
 
-    // Converts a base dp value into adaptively scaled floating-point pixels.
+    // Converts a base dp unit into density- and screen-scaled floating-point pixels.
     fun dpF(context: Context, value: Float): Float {
         return value * context.resources.displayMetrics.density * calculateAdaptiveScale(context)
     }
@@ -81,7 +85,7 @@ object LayoutMetrics {
         }
     }
 
-    // Applies focus animation using the active motion style stored in AppSettings.
+    // Applies focus animation using the active motion style from AppSettings.
     fun applyFocusSpring(view: View, focused: Boolean, scale: Float = 1.06f, elevationDp: Float = 8f) {
         val style = AppSettings(view.context).motionStyle
         AnimationController.animateFocus(view, focused, style, scale, elevationDp)
