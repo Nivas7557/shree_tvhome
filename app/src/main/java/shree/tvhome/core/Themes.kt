@@ -240,7 +240,10 @@ object Themes {
 
     val PANEL_WIDTH_OPTIONS = listOf(20, 25, 30, 35)
     const val PANEL_MIN_WIDTH_DP = 165
-    val GRID_COL_RANGE = 3..8
+    val GRID_COL_RANGE = 2..10
+    val CONVEYOR_NEIGHBOR_SCALE_RANGE = 0.62f..0.82f
+    const val CONVEYOR_NEIGHBOR_ALPHA = 0.46f
+    const val CONVEYOR_SIDE_MIN_HEIGHT_RATIO = 0.52f
 
     private val themeMap by lazy { THEMES.associateBy { it.key } }
     private val sizeMap by lazy { TILE_SIZES.associateBy { it.key } }
