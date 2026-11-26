@@ -22,6 +22,7 @@ import shree.tvhome.core.AppSettings
 import shree.tvhome.core.LayoutMetrics
 import shree.tvhome.core.MoodPresets
 import shree.tvhome.core.Themes
+import android.widget.FrameLayout
 import shree.tvhome.design.ClockWeatherCardDesign
 
 object StyleCustomizePanel {
