@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Important instructions:
+     - Keep string resources minimal and localized-ready without hardcoded clutter. -->
+<resources>
+    <string name="app_name">Shree TV Home</string>
+</resources>
