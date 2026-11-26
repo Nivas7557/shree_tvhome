@@ -235,7 +235,6 @@ object StyleCustomizePanel {
                     clipToPadding = false
                 }
                 pair.forEachIndexed { idx, spec ->
-                    val isSelected = settings.accentColor == spec.color
                     val card = object : LinearLayout(ctx) {
                         private val gradPaint = Paint(Paint.ANTI_ALIAS_FLAG)
                         private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
