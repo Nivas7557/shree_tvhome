@@ -133,7 +133,14 @@ class MainActivity : Activity() {
             }
         }
     }
+    // Route mobile touch gestures through TouchDpadSimulator so swipe/tap/long-press act like a TV remote.
+    private val dpadSimulator by lazy { TouchDpadSimulator(this) }
 
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (dpadSimulator.onDispatchTouchEvent(ev)) return true
+        return super.dispatchTouchEvent(ev)
+    }
+    
     // Routes D-Pad keys cleanly when the side panel hub is open or exits ambient mode on key press.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (isAmbientActive && event.action == KeyEvent.ACTION_DOWN) {
