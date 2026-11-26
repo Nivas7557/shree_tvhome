@@ -1,15 +1,17 @@
 // Important instructions:
 // - Derive screen padding and spacing proportionally from display metrics so every TV resolution looks balanced.
-// - Keep homepage layout composition centralized without hardcoded layout constants.
+// - Smoothly center-scroll focused app tiles and apply top/bottom vertical edge fading like a cinema shelf.
 
 package shree.tvhome
 
 import android.animation.LayoutTransition
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.View
+import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -40,8 +42,9 @@ class HomeScreen(
     val favCount: TextView
     val appGrid: LinearLayout
     val allCount: TextView
+    private var activeScrollAnimator: ObjectAnimator? = null
 
-    // Builds the top header bar, hidden ribbon, favorites shelf, and scrollable app grid with screen-scaled spacing.
+    // Builds the top header bar, hidden ribbon, favorites shelf, and center-locking fading app grid.
     init {
         orientation = VERTICAL
         clipChildren = false
@@ -51,7 +54,6 @@ class HomeScreen(
         val vPad = LayoutMetrics.screenVerticalPadding(context)
         val bottomPad = maxOf(dp(10), vPad / 2)
         val headerGap = maxOf(dp(12), vPad / 2)
-        // Derive top header bar height consistently via LayoutMetrics.dynamicSpace across all TV resolutions.
         val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.054f, minDp = 34, maxDp = 48, horizontal = false)
 
         setPadding(hPad, vPad, hPad, bottomPad)
@@ -143,19 +145,27 @@ class HomeScreen(
         favSection.addView(favHScroll)
         bodyContainer.addView(favSection)
 
-        // All apps header and vertical scroll container with background parallax hook.
+        // All apps header and vertical scroll container with top/bottom fading edges and center-focus lock.
         val allHeader = AppsShelfDesign.createHeader(
             context, "⊞  ALL APPS", isFavoritesRow = false, settings = settings, onSortChanged = onSortChanged
         )
         allCount = allHeader.findViewWithTag("count_tv")
         bodyContainer.addView(allHeader, LayoutParams(-1, -2).apply { topMargin = dp(10) })
 
-        val scroll = ScrollView(context).apply {
+        val fadeLength = LayoutMetrics.dynamicSpace(context, ratio = 0.055f, minDp = 28, maxDp = 54, horizontal = false)
+        val scroll = object : ScrollView(context) {
+            // Suppress default abrupt jump-scroll so our silky spring center-scroll controls vertical movement.
+            override fun requestChildRectangleOnScreen(child: View?, rectangle: android.graphics.Rect?, immediate: Boolean): Boolean {
+                return false
+            }
+        }.apply {
             isVerticalScrollBarEnabled = false
             isSmoothScrollingEnabled = true
             overScrollMode = View.OVER_SCROLL_NEVER
             clipToPadding = false
-            setPadding(0, dp(4), 0, dp(24))
+            isVerticalFadingEdgeEnabled = true
+            setFadingEdgeLength(fadeLength)
+            setPadding(0, dp(12), 0, dp(42))
             viewTreeObserver.addOnScrollChangedListener { LiveBackdrop.onScrollParallax(scrollY) }
         }
 
@@ -174,6 +184,38 @@ class HomeScreen(
         scrollContent.addView(appGrid)
         scroll.addView(scrollContent)
         bodyContainer.addView(scroll, LayoutParams(-1, 0, 1f))
+
+        // Smoothly center the focused app tile vertically inside the All Apps viewport.
+        scroll.viewTreeObserver.addOnGlobalFocusChangeListener(
+            ViewTreeObserver.OnGlobalFocusChangeListener { _, newFocus ->
+                if (newFocus == null || scroll.height <= 0) return@OnGlobalFocusChangeListener
+                if (!isDescendantOf(newFocus, appGrid)) return@OnGlobalFocusChangeListener
+
+                val tileCenterY = newFocus.y + (newFocus.height / 2f)
+                val viewportCenterY = scroll.height / 2f
+                val maxScroll = maxOf(0, scrollContent.height - scroll.height)
+                val targetScrollY = (tileCenterY - viewportCenterY).toInt().coerceIn(0, maxScroll)
+
+                if (kotlin.math.abs(scroll.scrollY - targetScrollY) > dp(4)) {
+                    activeScrollAnimator?.cancel()
+                    activeScrollAnimator = ObjectAnimator.ofInt(scroll, "scrollY", scroll.scrollY, targetScrollY).apply {
+                        duration = 320L
+                        interpolator = LayoutMetrics.SILKY_EASE
+                        start()
+                    }
+                }
+            }
+        )
+    }
+
+    // Checks whether targetView is inside container.
+    private fun isDescendantOf(targetView: View, container: View): Boolean {
+        var parent = targetView.parent
+        while (parent != null) {
+            if (parent === container) return true
+            parent = parent.parent
+        }
+        return false
     }
 
     // Reserves right-side stage width proportionally so app tiles stay clear of the widget/drawer.
@@ -184,36 +226,33 @@ class HomeScreen(
 
     // Returns whether the hidden apps ribbon is currently visible.
     fun isHiddenRibbonVisible(): Boolean = hiddenSection.visibility == View.VISIBLE
-
-    // Populates and animates open the hidden apps ribbon.
-    fun openHiddenRibbon(onUnhideApp: (String, String) -> Unit) {
-        AppsShelfDesign.populateHiddenRibbon(context, settings, hiddenSection, hiddenRow, hiddenCount, onUnhideApp)
-        if (hiddenSection.visibility == View.VISIBLE) {
-            hiddenSection.alpha = 0f
-            hiddenSection.scaleY = 0.90f
-            hiddenSection.animate()
-                .alpha(1f).scaleY(1f)
-                .setDuration(300L)
-                .setInterpolator(LayoutMetrics.FLUID_SPRING)
-                .start()
-        }
-    }
-
-    // Animates closed the hidden apps ribbon and notifies the caller to refresh focus/grid.
-    fun closeHiddenRibbon(focusPkg: String? = null) {
-        if (hiddenSection.visibility != View.VISIBLE) return
-        hiddenSection.animate()
-            .alpha(0f).scaleY(0.90f)
-            .setDuration(220L)
-            .setInterpolator(LayoutMetrics.SILKY_EASE)
-            .withEndAction {
-                hiddenSection.visibility = View.GONE
-                hiddenSection.alpha = 1f
-                hiddenSection.scaleY = 1f
-                onHiddenRibbonClosed(focusPkg)
-            }
-            .start()
-    }
-
-    private fun dp(value: Int): Int = LayoutMetrics.dp(context, value)
+// Populates and animates open the hidden apps ribbon.
+fun openHiddenRibbon(onUnhideApp: (String, String) -> Unit) {
+AppsShelfDesign.populateHiddenRibbon(context, settings, hiddenSection, hiddenRow, hiddenCount, onUnhideApp)
+if (hiddenSection.visibility == View.VISIBLE) {
+hiddenSection.alpha = 0f
+hiddenSection.scaleY = 0.90f
+hiddenSection.animate()
+.alpha(1f).scaleY(1f)
+.setDuration(300L)
+.setInterpolator(LayoutMetrics.FLUID_SPRING)
+.start()
+}
+}
+// Animates closed the hidden apps ribbon and notifies the caller to refresh focus/grid.
+fun closeHiddenRibbon(focusPkg: String? = null) {
+if (hiddenSection.visibility != View.VISIBLE) return
+hiddenSection.animate()
+.alpha(0f).scaleY(0.90f)
+.setDuration(220L)
+.setInterpolator(LayoutMetrics.SILKY_EASE)
+.withEndAction {
+hiddenSection.visibility = View.GONE
+hiddenSection.alpha = 1f
+hiddenSection.scaleY = 1f
+onHiddenRibbonClosed(focusPkg)
+}
+.start()
+}
+private fun dp(value: Int): Int = LayoutMetrics.dp(context, value)
 }
