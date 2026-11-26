@@ -1,6 +1,6 @@
 // Important instructions:
+// - Reference shared glass card styling from PanelSurfaceKit so palette/accent changes stay unified.
 // - Query live Wi-Fi state dynamically on every toggle instead of relying on stale boolean flags.
-// - Request runtime location access only when scanning nearby networks requires it on Android M+.
 
 package shree.tvhome.panels
 
@@ -51,11 +51,13 @@ object WifiPanel {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(ctx, 12), dp(ctx, 10), dp(ctx, 12), dp(ctx, 10))
             isFocusable = true
-            background = cardBg(ctx, settings.accentColor, initialOn)
+            background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, initialOn, settings.tileColor)
             setOnFocusChangeListener { v, f ->
                 val currentOn = try { wm?.isWifiEnabled == true } catch (_: Exception) { true }
                 AnimationController.animateFocus(v, f, settings.motionStyle, 1.02f, 4f)
-                v.background = cardBg(ctx, settings.accentColor, f || currentOn)
+                v.background = PanelSurfaceKit.glassCardBg(
+                    ctx, settings.accentColor, f || currentOn, settings.tileColor
+                )
             }
         }
 
@@ -122,7 +124,7 @@ object WifiPanel {
                 val metricCard = LinearLayout(ctx).apply {
                     orientation = LinearLayout.HORIZONTAL
                     setPadding(dp(ctx, 12), dp(ctx, 8), dp(ctx, 12), dp(ctx, 8))
-                    background = cardBg(ctx, settings.accentColor, false)
+                    background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, false, settings.tileColor)
                 }
                 val col1 = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
                 col1.addView(TextView(ctx).apply { text = "LINK SPEED"; textSize = 8f; setTextColor(Color.LTGRAY) })
@@ -155,7 +157,6 @@ object WifiPanel {
                 col3.addView(pingTv)
                 metricCard.addView(col3, LinearLayout.LayoutParams(0, -2, 0.8f))
 
-                // Check reachability on a shared single-thread executor rather than spawning unbounded threads.
                 netExecutor.execute {
                     val start = System.currentTimeMillis()
                     val reachable = try {
@@ -210,10 +211,12 @@ object WifiPanel {
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(dp(ctx, 12), dp(ctx, 9), dp(ctx, 12), dp(ctx, 9))
                         isFocusable = true
-                        background = cardBg(ctx, settings.accentColor, isCurrent)
+                        background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, isCurrent, settings.tileColor)
                         setOnFocusChangeListener { v, f ->
                             AnimationController.animateFocus(v, f, settings.motionStyle, 1.02f, 4f)
-                            v.background = cardBg(ctx, settings.accentColor, f || isCurrent)
+                            v.background = PanelSurfaceKit.glassCardBg(
+                                ctx, settings.accentColor, f || isCurrent, settings.tileColor
+                            )
                         }
                         setOnClickListener {
                             showGlossyWifiConnectDialog(ctx, settings, wm, scan.SSID)
@@ -349,21 +352,12 @@ object WifiPanel {
         gravity = Gravity.CENTER
         isFocusable = true
         isClickable = true
-        background = cardBg(ctx, settings.accentColor, false)
+        background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, false, settings.tileColor)
         setOnFocusChangeListener { v, f ->
             AnimationController.animateFocus(v, f, settings.motionStyle, 1.03f, 4f)
-            v.background = cardBg(ctx, settings.accentColor, f)
+            v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, f, settings.tileColor)
         }
         setOnClickListener { onClick() }
-    }
-
-    private fun cardBg(ctx: Context, accent: Int, active: Boolean) = GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        if (active) intArrayOf(LayoutMetrics.withAlpha(accent, 115), Color.argb(65, 255, 255, 255))
-        else intArrayOf(Color.argb(52, 255, 255, 255), Color.argb(26, 255, 255, 255))
-    ).apply {
-        cornerRadius = LayoutMetrics.dpF(ctx, 14f)
-        setStroke(dp(ctx, if (active) 2 else 1), if (active) accent else Color.argb(65, 255, 255, 255))
     }
 
     private fun dp(ctx: Context, v: Int): Int = LayoutMetrics.dp(ctx, v)
