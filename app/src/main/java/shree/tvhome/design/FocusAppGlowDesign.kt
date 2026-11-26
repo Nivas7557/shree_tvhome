@@ -1,6 +1,6 @@
 // Important instructions:
 // - Cache gradient shaders when size or style changes instead of allocating shaders inside draw loops.
-// - Clip child icon content to the inner silhouette path while drawing outer frame and glow layers.
+// - Render a soft diagonal air-fog dissolve sheen and luminous aura on focused tiles without heavy RAM overhead.
 
 package shree.tvhome.design
 
@@ -9,6 +9,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
@@ -18,10 +19,12 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import shree.tvhome.core.LayoutMetrics
 import shree.tvhome.core.Themes
+import kotlin.math.sin
 
 class FocusAppGlowDesign(context: Context) : FrameLayout(context) {
     private val outerCardPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val outerSheenPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val diagonalFogPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val sunrayGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val coreBloomPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val innerRimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -30,6 +33,7 @@ class FocusAppGlowDesign(context: Context) : FrameLayout(context) {
     private val sheenRect = RectF()
     private val outerPath = Path()
     private val innerIconPath = Path()
+    private val fogMatrix = Matrix()
 
     private var tileFocused = false
     private var glowIntensity = 0f
@@ -74,8 +78,8 @@ class FocusAppGlowDesign(context: Context) : FrameLayout(context) {
         } else {
             val startGlow = glowIntensity.coerceAtLeast(0.45f)
             exitAnimator = ValueAnimator.ofFloat(startGlow, 0f).apply {
-                duration = 340L
-                interpolator = DecelerateInterpolator(1.6f)
+                duration = 360L
+                interpolator = DecelerateInterpolator(1.7f)
                 addUpdateListener { anim ->
                     glowIntensity = anim.animatedValue as Float
                     invalidate()
@@ -85,7 +89,7 @@ class FocusAppGlowDesign(context: Context) : FrameLayout(context) {
         }
     }
 
-    // Updates animated pulse intensity (0..1) during focus breathing.
+    // Updates animated pulse intensity (0..1) during focus breathing and diagonal air-fog drift.
     fun updateGlowPulse(intensity: Float) {
         glowIntensity = intensity.coerceIn(0f, 1f)
         invalidate()
@@ -101,7 +105,7 @@ class FocusAppGlowDesign(context: Context) : FrameLayout(context) {
         updateShaders(wf, hf)
     }
 
-    // Builds linear and radial gradient shaders for the outer frame, sheen, and bloom.
+    // Builds linear and radial gradient shaders for the outer frame, sheen, diagonal air-fog, and bloom.
     private fun updateShaders(w: Float, h: Float) {
         if (w <= 0f || h <= 0f) return
 
@@ -112,11 +116,25 @@ class FocusAppGlowDesign(context: Context) : FrameLayout(context) {
         outerSheenPaint.shader = LinearGradient(
             0f, 0f, 0f, h * 0.46f,
             intArrayOf(
-                Color.argb(if (tileFocused) 175 else 115, 255, 255, 255),
-                Color.argb(if (tileFocused) 55 else 28, 255, 255, 255),
+                Color.argb(if (tileFocused) 165 else 105, 255, 255, 255),
+                Color.argb(if (tileFocused) 50 else 24, 255, 255, 255),
                 Color.TRANSPARENT
             ),
             floatArrayOf(0f, 0.65f, 1f),
+            Shader.TileMode.CLAMP
+        )
+
+        // Diagonal air-fog dissolve band that glides softly across focused tiles.
+        diagonalFogPaint.shader = LinearGradient(
+            0f, 0f, w * 0.85f, h * 0.85f,
+            intArrayOf(
+                Color.TRANSPARENT,
+                LayoutMetrics.withAlpha(accentColor, 38),
+                Color.argb(82, 255, 255, 255),
+                LayoutMetrics.withAlpha(appDominantColor, 44),
+                Color.TRANSPARENT
+            ),
+            floatArrayOf(0f, 0.25f, 0.50f, 0.75f, 1f),
             Shader.TileMode.CLAMP
         )
 
@@ -139,8 +157,7 @@ class FocusAppGlowDesign(context: Context) : FrameLayout(context) {
         buildShapeIntoPath(outerPath, w, h, outerInset)
         buildShapeIntoPath(innerIconPath, w, h, outerInset + visibleGap)
     }
-
-    // Populates a shape path for heart, circle, classic square, or rounded squircle.
+        // Populates a shape path for heart, circle, classic square, or rounded squircle.
     private fun buildShapeIntoPath(target: Path, w: Float, h: Float, inset: Float) {
         target.reset()
         val sw = w - inset * 2f
@@ -183,7 +200,7 @@ class FocusAppGlowDesign(context: Context) : FrameLayout(context) {
         }
     }
 
-    // Draws sunray aura, outer glass frame, clipped icon bitmap, and rim strokes.
+    // Draws sunray aura, outer glass frame, clipped icon bitmap, diagonal air-fog sheen, and rim strokes.
     override fun dispatchDraw(canvas: Canvas) {
         val w = width.toFloat()
         val h = height.toFloat()
@@ -230,6 +247,20 @@ class FocusAppGlowDesign(context: Context) : FrameLayout(context) {
         canvas.clipPath(innerIconPath)
         super.dispatchDraw(canvas)
         canvas.restore()
+
+        // Drift a soft diagonal air-fog mist across the focused tile silhouette that dissolves at edges.
+        if (tileFocused && diagonalFogPaint.shader != null) {
+            val fogEnvelope = sin(glowIntensity * Math.PI).toFloat().coerceIn(0f, 1f)
+            diagonalFogPaint.alpha = (255 * fogEnvelope).toInt()
+            val shiftX = (-w * 0.55f) + (w * 1.15f * glowIntensity)
+            val shiftY = (-h * 0.55f) + (h * 1.15f * glowIntensity)
+            canvas.save()
+            canvas.clipPath(outerPath)
+            fogMatrix.setTranslate(shiftX, shiftY)
+            diagonalFogPaint.shader.setLocalMatrix(fogMatrix)
+            canvas.drawRect(0f, 0f, w, h, diagonalFogPaint)
+            canvas.restore()
+        }
 
         innerRimPaint.strokeWidth = dp(if (tileFocused) 1.6f else 1.1f)
         innerRimPaint.color = if (tileFocused) Color.argb(225, 255, 255, 255) else Color.argb(110, 255, 255, 255)
