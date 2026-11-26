@@ -46,23 +46,23 @@ object AppsShelfDesign {
         AppTileDesign.clearAssetCache()
     }
 
-    // Computes responsive shelf column count, tile dimensions, and margins dynamically from display metrics.
+    // Computes responsive shelf column count, generous inter-tile gaps, and proportional banner dimensions.
     private fun computeShelfGeometry(ctx: Context, settings: AppSettings): ShelfGeometry {
         val sizeSpec = Themes.getTileSizeSpec(settings.tileSize)
         val screenW = ctx.resources.displayMetrics.widthPixels
-        val sidePad = (screenW * 0.035f).toInt()
-        val gap = maxOf(dp(ctx, 8), (screenW * 0.009f).toInt())
+        val sidePad = LayoutMetrics.screenHorizontalPadding(ctx) * 2
+        val gap = LayoutMetrics.dynamicSpace(ctx, ratio = 0.014f, minDp = 12, maxDp = 24, horizontal = true)
         val minStageW = dp(ctx, Themes.PANEL_MIN_WIDTH_DP)
         val rightStageW = maxOf(minStageW, (screenW * (settings.panelWidthPct / 100f)).toInt())
-        val availableW = maxOf(dp(ctx, 200), screenW - sidePad - rightStageW - dp(ctx, 6))
+        val stageClearance = LayoutMetrics.dynamicSpace(ctx, ratio = 0.018f, minDp = 12, maxDp = 30, horizontal = true)
+        val availableW = maxOf(dp(ctx, 200), screenW - sidePad - rightStageW - stageClearance)
 
         val desiredTilePx = dp(ctx, sizeSpec.desiredGridDp)
         val colRange = Themes.GRID_COL_RANGE
         val colCount = ((availableW + gap) / (desiredTilePx + gap)).coerceIn(colRange.first, colRange.last)
         val cellW = maxOf(1, (availableW - (gap * (colCount - 1))) / colCount)
-        val tileW = maxOf(1, (cellW * 0.94f).toInt())
-        val extraNameplateH = dp(ctx, 24)
-        // Use 16:10 TV banner card proportion so app tiles look like authentic Android TV cards.
+        val tileW = maxOf(1, (cellW * 0.92f).toInt())
+        val extraNameplateH = LayoutMetrics.dynamicSpace(ctx, ratio = 0.032f, minDp = 22, maxDp = 32, horizontal = false)
         val tileH = maxOf(1, (tileW * 0.62f).toInt() + extraNameplateH)
         val sideMargin = maxOf(0, (cellW - tileW) / 2)
 
