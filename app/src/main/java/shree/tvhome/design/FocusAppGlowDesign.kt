@@ -247,3 +247,7 @@ class FocusAppGlowDesign(context: Context) : FrameLayout(context) {
     // Cancels running exit animator on detach.
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+            exitAnimator?.cancel()
+        }
+    private fun dp(value: Float): Float = LayoutMetrics.dpF(context, value)
+}
