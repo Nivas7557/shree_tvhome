@@ -7,7 +7,12 @@ package shree.tvhome.panels
 
 import android.app.Dialog
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
@@ -42,7 +47,6 @@ object StyleCustomizePanel {
         onOpenClockSettings: () -> Unit,
         onCloseDrawer: () -> Unit
     ) {
-        // Snapshot committed values so focus-only previews can show live changes and commit only on click.
         val savedAccent = settings.accentColor
         val savedAccentName = settings.accentName
         val savedTheme = settings.tileColor
@@ -243,9 +247,9 @@ object StyleCustomizePanel {
                         if (w <= 0f || h <= 0f) return
                         val pad = LayoutMetrics.dpF(context, 2f)
                         rect.set(pad, pad, w - pad, h - pad)
-                        gradPaint.shader = android.graphics.LinearGradient(
+                        gradPaint.shader = LinearGradient(
                             pad, pad, w - pad, h - pad,
-                            spec.gradientColors, null, android.graphics.Shader.TileMode.CLAMP
+                            spec.gradientColors, null, Shader.TileMode.CLAMP
                         )
                         val r = minOf(w, h) / 2f
                         canvas.drawRoundRect(rect, r, r, gradPaint)
@@ -545,12 +549,6 @@ object StyleCustomizePanel {
         setOnClickListener { v -> onClick(v) }
         addView(titleTv)
         addView(subTv)
-    }
-
-    private fun swatchBg(ctx: Context, col: Int, active: Boolean) = GradientDrawable().apply {
-        shape = GradientDrawable.OVAL
-        setColor(col)
-        setStroke(dp(ctx, if (active) 3 else 1), if (active) Color.WHITE else Color.argb(110, 255, 255, 255))
     }
 
     private fun dp(ctx: Context, v: Int): Int = LayoutMetrics.dp(ctx, v)
