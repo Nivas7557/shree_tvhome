@@ -245,15 +245,19 @@ object AppsShelfDesign {
 
         val geom = computeShelfGeometry(ctx, settings)
 
-        // Update or rebuild the horizontal favorites shelf.
+        // Keep the Favorites ribbon visible at consistent height even when empty so the App Shelf never shifts.
         val currentFavSig = favApps.joinToString { it.activityInfo.packageName }
+        favSection.visibility = View.VISIBLE
         if (favApps.isEmpty()) {
-            favSection.visibility = View.GONE
+            favCount.text = "0 Apps • Long-press any app to pin"
+            favRow.removeAllViews()
+            favRow.minimumHeight = geom.tileH
             lastFavSignature = ""
         } else {
-            favSection.visibility = View.VISIBLE
             favCount.text = "${favApps.size} Apps"
-            favRow.setPadding(geom.sideMargin, 0, geom.sideMargin, 0)
+            favRow.minimumHeight = geom.tileH
+            val favInnerPad = LayoutMetrics.dynamicSpace(ctx, ratio = 0.006f, minDp = 4, maxDp = 10, horizontal = false)
+            favRow.setPadding(geom.sideMargin, favInnerPad, geom.sideMargin, favInnerPad)
             if (currentFavSig != lastFavSignature) {
                 favRow.removeAllViews()
                 favApps.forEachIndexed { idx, info ->
@@ -285,60 +289,48 @@ object AppsShelfDesign {
             }
         }
 
-        // Update or rebuild the main SpatialGridDesign catalog.
+        // Update or rebuild the 3-band perspective CinemaConveyorShelf inside the glossy rim box.
         allCount.text = "${sortedAll.size} Apps"
         val favSet = favOrder.toSet()
         val currentAppSig = sortedAll.joinToString { it.activityInfo.packageName } + "_${favSet.size}"
-        var spatialGrid = appGrid.findViewWithTag<SpatialGridDesign>("spatial_engine")
+        var conveyor = appGrid.findViewWithTag<CinemaConveyorShelf>("spatial_engine")
 
-        if (spatialGrid == null || currentAppSig != lastAppSignature) {
+        if (conveyor == null || currentAppSig != lastAppSignature) {
             appGrid.removeAllViews()
-            spatialGrid = SpatialGridDesign(ctx).apply { tag = "spatial_engine" }
+            conveyor = CinemaConveyorShelf(ctx).apply { tag = "spatial_engine" }
             appGrid.addView(
-                spatialGrid,
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                    .apply { leftMargin = geom.sideMargin; rightMargin = geom.sideMargin }
+                conveyor,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
             )
-            sortedAll.forEach { info ->
-                spatialGrid.addView(
-                    AppTileDesign.create(
-                        ctx = ctx,
-                        pm = pm,
-                        settings = settings,
-                        info = info,
-                        isFavRow = false,
-                        isFav = favSet.contains(info.activityInfo.packageName),
-                        canMoveLeft = false,
-                        canMoveRight = false,
-                        w = geom.tileW,
-                        h = geom.tileH,
-                        actions = actions
-                    )
+            sortedAll.forEachIndexed { idx, info ->
+                val tile = AppTileDesign.create(
+                    ctx = ctx,
+                    pm = pm,
+                    settings = settings,
+                    info = info,
+                    isFavRow = false,
+                    isFav = favSet.contains(info.activityInfo.packageName),
+                    canMoveLeft = false,
+                    canMoveRight = false,
+                    w = geom.tileW,
+                    h = geom.tileH,
+                    actions = actions
                 )
+                // Keep conveyor active index synced when a tile receives focus via touch or D-Pad.
+                val existingFocusListener = tile.onFocusChangeListener
+                tile.setOnFocusChangeListener { v, hasFocus ->
+                    existingFocusListener?.onFocusChange(v, hasFocus)
+                    if (hasFocus) conveyor.focusItemAt(idx, animate = true)
+                }
+                conveyor.addView(tile)
             }
             lastAppSignature = currentAppSig
-            spatialGrid.updateGridState(geom.colCount, geom.tileW, geom.tileH, geom.gap, animate = false)
+            conveyor.updateConveyorMetrics(geom.colCount, geom.tileW, geom.tileH, geom.gap, animate = false)
         } else {
-            for (i in 0 until spatialGrid.childCount) {
-                val child = spatialGrid.getChildAt(i)
-                AppTileDesign.updateTileAppearance(ctx, child, settings)
+            for (i in 0 until conveyor.childCount) {
+                AppTileDesign.updateTileAppearance(ctx, conveyor.getChildAt(i), settings)
             }
-            (spatialGrid.layoutParams as? LinearLayout.LayoutParams)?.let { p ->
-                if (p.leftMargin != geom.sideMargin || p.rightMargin != geom.sideMargin) {
-                    ValueAnimator.ofInt(p.leftMargin, geom.sideMargin).apply {
-                        duration = 320L
-                        interpolator = LayoutMetrics.FLUID_SPRING
-                        addUpdateListener { anim ->
-                            val m = anim.animatedValue as Int
-                            p.leftMargin = m
-                            p.rightMargin = m
-                            spatialGrid.requestLayout()
-                        }
-                        start()
-                    }
-                }
-            }
-            spatialGrid.updateGridState(geom.colCount, geom.tileW, geom.tileH, geom.gap, animate = true)
+            conveyor.updateConveyorMetrics(geom.colCount, geom.tileW, geom.tileH, geom.gap, animate = true)
         }
 
         // Assign default initial focus declaratively on Android O+ without forced requestFocus() calls.
