@@ -1,5 +1,5 @@
 // Important instructions:
-// - Resolve location dynamically from saved coordinates, city search, IP geolocation, or device timezone/locale.
+// - Resolve location dynamically via geocoding, device Geocoder, or timezone/locale without cleartext HTTP.
 // - Tick clock and weather timers cleanly on window attach/detach without leaked handlers.
 
 package shree.tvhome.design
@@ -40,7 +40,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
-import kotlin.concurrent.thread
+import java.util.concurrent.Executors
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -73,6 +73,7 @@ class ClockWeatherCardDesign(
     private val weatherCard = LinearLayout(ctx)
 
     private val uiHandler = Handler(Looper.getMainLooper())
+    private val bgExecutor = Executors.newSingleThreadExecutor()
     private var lastWeatherFetchMs = 0L
 
     // Updates clock hands, digital time, and date once per second while attached.
@@ -254,7 +255,7 @@ class ClockWeatherCardDesign(
             } else {
                 statusTv.text = "Searching '$q'..."
                 searchRunnable = Runnable {
-                    thread {
+                    bgExecutor.execute {
                         val (list, errMsg) = fetchCitySuggestionsWithStatus(q)
                         uiHandler.post {
                             suggestionsContainer.removeAllViews()
@@ -336,7 +337,7 @@ class ClockWeatherCardDesign(
     private fun fetchCitySuggestions(query: String): List<CitySuggestion> =
         fetchCitySuggestionsWithStatus(query).first
 
-    // Queries geocoding API first and falls back to Android Geocoder when needed.
+    // Queries HTTPS geocoding API first and falls back to Android Geocoder when needed.
     private fun fetchCitySuggestionsWithStatus(query: String): Pair<List<CitySuggestion>, String?> {
         try {
             val encoded = URLEncoder.encode(query, "UTF-8")
@@ -409,13 +410,13 @@ class ClockWeatherCardDesign(
         analogView.requestLayout()
     }
 
-    // Fetches current weather asynchronously when forced or after the 20-minute throttle window.
+    // Fetches current weather on the shared executor when forced or after the 20-minute interval.
     fun triggerWeatherRefresh(force: Boolean = false) {
         val now = System.currentTimeMillis()
         if (!force && now - lastWeatherFetchMs < 20 * 60 * 1000L) return
         lastWeatherFetchMs = now
 
-        thread {
+        bgExecutor.execute {
             try {
                 var lat = settings.prefs.getFloat(AppSettings.PREF_SAVED_LAT, 0f).toDouble()
                 var lon = settings.prefs.getFloat(AppSettings.PREF_SAVED_LON, 0f).toDouble()
@@ -434,17 +435,7 @@ class ClockWeatherCardDesign(
                     }
                 }
 
-                if (lat == 0.0 && lon == 0.0) {
-                    try {
-                        val ipJson = JSONObject(fetchUrl("http://ip-api.com/json/"))
-                        if (ipJson.optString("status") == "success") {
-                            lat = ipJson.getDouble("lat")
-                            lon = ipJson.getDouble("lon")
-                            if (cityName.isEmpty()) cityName = ipJson.optString("city", "Local")
-                        }
-                    } catch (_: Exception) {}
-                }
-
+                // Resolve location dynamically from device TimeZone or Locale without cleartext HTTP.
                 if (lat == 0.0 && lon == 0.0) {
                     val tzCity = TimeZone.getDefault().id
                         .substringAfterLast('/')
