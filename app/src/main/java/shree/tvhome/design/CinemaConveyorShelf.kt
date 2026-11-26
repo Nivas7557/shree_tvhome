@@ -13,7 +13,7 @@ import kotlin.math.abs
 
 class CinemaConveyorShelf(context: Context) : ViewGroup(context) {
 
-    var columns: Int = 5
+    var columns: Int = shree.tvhome.core.Themes.GRID_COL_RANGE.first
         private set
     var tileW: Int = 0
         private set
@@ -26,7 +26,7 @@ class CinemaConveyorShelf(context: Context) : ViewGroup(context) {
     private var topBandY: Float = 0f
     private var centerBandY: Float = 0f
     private var bottomBandY: Float = 0f
-    private var neighborScale: Float = 0.74f
+    private var neighborScale: Float = shree.tvhome.core.Themes.CONVEYOR_NEIGHBOR_SCALE_RANGE.start
 
     init {
         clipChildren = false
@@ -87,8 +87,10 @@ class CinemaConveyorShelf(context: Context) : ViewGroup(context) {
         // Center focus band sits squarely at the vertical midpoint of the shelf stage.
         centerBandY = (stageH - tileH) / 2f
         val verticalGap = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 6, maxDp = 16, horizontal = false).toFloat()
-        val availableSideH = ((stageH - tileH) / 2f - verticalGap).coerceAtLeast(tileH * 0.52f)
-        neighborScale = (availableSideH / tileH.toFloat()).coerceIn(0.64f, 0.82f)
+        val availableSideH = ((stageH - tileH) / 2f - verticalGap)
+            .coerceAtLeast(tileH * shree.tvhome.core.Themes.CONVEYOR_SIDE_MIN_HEIGHT_RATIO)
+        neighborScale = (availableSideH / tileH.toFloat())
+            .coerceIn(shree.tvhome.core.Themes.CONVEYOR_NEIGHBOR_SCALE_RANGE)
 
         val scaledNeighborH = tileH * neighborScale
         val visualOffset = (tileH - scaledNeighborH) / 2f
@@ -180,7 +182,7 @@ class CinemaConveyorShelf(context: Context) : ViewGroup(context) {
             }
             val targetAlpha = when (band) {
                 0 -> 1f
-                -1, 1 -> 0.46f
+                -1, 1 -> shree.tvhome.core.Themes.CONVEYOR_NEIGHBOR_ALPHA
                 else -> 0f
             }
             val targetY = when (band) {
