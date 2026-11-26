@@ -1,7 +1,3 @@
-// Important instructions:
-// - Derive time-of-day greetings automatically and carve the avatar circle seam dynamically.
-// - Cancel continuous shimmer animation when detached to avoid background animation overhead.
-
 package shree.tvhome.design
 
 import android.animation.ValueAnimator
@@ -17,7 +13,7 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.text.TextUtils
 import android.view.Gravity
-import android.view.animation.LinearInterpolator
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
 import shree.tvhome.core.LayoutMetrics
@@ -41,10 +37,12 @@ class GreetingCardDesign(
     private val iconTv = TextView(ctx)
     private val titleTv = TextView(ctx)
     private var overlayBubble: TextView? = null
-    private var shimmerAnim: ValueAnimator? = null
-    private var shimmerX = -200f
+    private var fogAnim: ValueAnimator? = null
+    private var fogProgress = 0f
+
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val shimmerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val airFogPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rimStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val shaderMatrix = Matrix()
     private val shapePath = Path()
     private val avatarCutoutPath = Path()
@@ -93,15 +91,11 @@ class GreetingCardDesign(
         invalidate()
     }
 
-    // Updates the accent gradient tint and redraws the card.
+    // Updates the accent gradient tint and rebuilds the diagonal air-fog shader.
     fun setAccentColor(accent: Int) {
         accentColor = accent
         if (width > 0 && height > 0) {
-            bgPaint.shader = LinearGradient(
-                0f, 0f, width.toFloat(), 0f,
-                intArrayOf(LayoutMetrics.withAlpha(accentColor, 115), Color.argb(85, 22, 34, 72)),
-                null, Shader.TileMode.CLAMP
-            )
+            rebuildShaders(width.toFloat(), height.toFloat())
         }
         invalidate()
     }
@@ -141,61 +135,91 @@ class GreetingCardDesign(
         }
     }
 
-    // Rebuilds path and shimmer gradient and starts subtle horizontal sheen animation.
+    // Builds base glass gradient and soft 45-degree diagonal air-fog dissolve shader.
+    private fun rebuildShaders(w: Float, h: Float) {
+        bgPaint.shader = LinearGradient(
+            0f, 0f, w, h,
+            intArrayOf(
+                LayoutMetrics.withAlpha(accentColor, 128),
+                Color.argb(95, 22, 34, 72),
+                LayoutMetrics.withAlpha(accentColor, 65)
+            ),
+            floatArrayOf(0f, 0.58f, 1f),
+            Shader.TileMode.CLAMP
+        )
+
+        // Wide diagonal mist gradient that dissolves smoothly at both leading and trailing edges.
+        airFogPaint.shader = LinearGradient(
+            0f, 0f, w * 0.72f, h * 1.15f,
+            intArrayOf(
+                Color.TRANSPARENT,
+                LayoutMetrics.withAlpha(accentColor, 26),
+                Color.argb(64, 255, 255, 255),
+                LayoutMetrics.withAlpha(accentColor, 34),
+                Color.TRANSPARENT
+            ),
+            floatArrayOf(0f, 0.26f, 0.50f, 0.74f, 1f),
+            Shader.TileMode.CLAMP
+        )
+    }
+
+    // Rebuilds path and starts continuous diagonal air-fog drift animation.
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (w <= 0 || h <= 0) return
 
         rebuildShapePath(w, h)
-        bgPaint.shader = LinearGradient(
-            0f, 0f, w.toFloat(), 0f,
-            intArrayOf(LayoutMetrics.withAlpha(accentColor, 115), Color.argb(85, 22, 34, 72)),
-            null, Shader.TileMode.CLAMP
-        )
+        rebuildShaders(w.toFloat(), h.toFloat())
 
-        shimmerPaint.shader = LinearGradient(
-            0f, 0f, w * 0.35f, h * 0.4f,
-            intArrayOf(Color.TRANSPARENT, Color.argb(55, 255, 255, 255), Color.TRANSPARENT),
-            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP
-        )
-        shimmerAnim?.cancel()
-        shimmerAnim = ValueAnimator.ofFloat(-w * 0.5f, w * 1.5f).apply {
-            duration = 3200L
+        fogAnim?.cancel()
+        fogAnim = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 4600L
             repeatCount = ValueAnimator.INFINITE
-            interpolator = LinearInterpolator()
+            interpolator = AccelerateDecelerateInterpolator()
             addUpdateListener {
-                shimmerX = it.animatedValue as Float
+                fogProgress = it.animatedValue as Float
                 invalidate()
             }
             start()
         }
     }
 
-    // Draws the sculpted greeting background shape before child text views.
+    // Draws the sculpted greeting background shape and subtle glass border.
     override fun onDraw(canvas: Canvas) {
         if (width > 0 && height > 0) {
             canvas.drawPath(shapePath, bgPaint)
+            rimStrokePaint.strokeWidth = LayoutMetrics.dpF(context, 1f)
+            rimStrokePaint.color = LayoutMetrics.withAlpha(accentColor, 120)
+            canvas.drawPath(shapePath, rimStrokePaint)
         }
         super.onDraw(canvas)
     }
 
-    // Clips and draws the animated light shimmer sweep across the card.
+    // Clips and drifts the diagonal air-fog mist across the greeting card while dissolving its alpha near edges.
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
-        if (width > 0 && shimmerPaint.shader != null) {
+        if (width > 0 && height > 0 && airFogPaint.shader != null) {
+            val w = width.toFloat()
+            val h = height.toFloat()
+            // Dissolve opacity smoothly at start (0.0) and end (1.0) of the drift cycle.
+            val dissolveEnvelope = kotlin.math.sin(fogProgress * Math.PI).toFloat().coerceIn(0f, 1f)
+            airFogPaint.alpha = (255 * dissolveEnvelope).toInt()
+
+            val dx = (-w * 0.65f) + (w * 1.45f * fogProgress)
+            val dy = (-h * 0.25f) + (h * 0.50f * fogProgress)
             canvas.save()
             canvas.clipPath(shapePath)
-            shaderMatrix.setTranslate(shimmerX, 0f)
-            shimmerPaint.shader.setLocalMatrix(shaderMatrix)
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), shimmerPaint)
+            shaderMatrix.setTranslate(dx, dy)
+            airFogPaint.shader.setLocalMatrix(shaderMatrix)
+            canvas.drawRect(0f, 0f, w, h, airFogPaint)
             canvas.restore()
         }
     }
 
-    // Stops shimmer animation when detached from window.
+    // Stops fog animation when detached from window.
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        shimmerAnim?.cancel()
+        fogAnim?.cancel()
     }
 
     private fun dp(v: Int): Int = LayoutMetrics.dp(context, v)
