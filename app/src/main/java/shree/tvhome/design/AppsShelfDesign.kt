@@ -46,17 +46,18 @@ object AppsShelfDesign {
         AppTileDesign.clearAssetCache()
     }
 
-    // Computes responsive shelf column count, generous inter-tile gaps, and proportional banner dimensions.
+    // Computes responsive shelf column count and generous inter-tile gaps inside the glossy outer container.
     private fun computeShelfGeometry(ctx: Context, settings: AppSettings): ShelfGeometry {
         val sizeSpec = Themes.getTileSizeSpec(settings.tileSize)
         val screenW = ctx.resources.displayMetrics.widthPixels
         val sidePad = LayoutMetrics.screenHorizontalPadding(ctx) * 2
+        val innerBoxPad = LayoutMetrics.dynamicSpace(ctx, ratio = 0.012f, minDp = 10, maxDp = 18, horizontal = true) * 2
         val gap = LayoutMetrics.dynamicSpace(ctx, ratio = 0.014f, minDp = 12, maxDp = 24, horizontal = true)
         val minStageW = dp(ctx, Themes.PANEL_MIN_WIDTH_DP)
         val rightStageW = maxOf(minStageW, (screenW * (settings.panelWidthPct / 100f)).toInt())
         val stageClearance = LayoutMetrics.dynamicSpace(ctx, ratio = 0.018f, minDp = 12, maxDp = 30, horizontal = true)
-        val availableW = maxOf(dp(ctx, 200), screenW - sidePad - rightStageW - stageClearance)
-
+        val availableW = maxOf(dp(ctx, 200), screenW - sidePad - innerBoxPad - rightStageW - stageClearance)
+        
         val desiredTilePx = dp(ctx, sizeSpec.desiredGridDp)
         val colRange = Themes.GRID_COL_RANGE
         val colCount = ((availableW + gap) / (desiredTilePx + gap)).coerceIn(colRange.first, colRange.last)
