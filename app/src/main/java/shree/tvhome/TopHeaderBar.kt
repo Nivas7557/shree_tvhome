@@ -1,6 +1,6 @@
 // Important instructions:
-// - Keep top navigation clean with zero favorite badges or hardcoded dimension multipliers.
-// - Update live RAM and Wi-Fi indicators cleanly and release receivers/animations on detach.
+// - Keep top navigation free of favorite badges, hardcoded dimensions, or forced focus calls.
+// - Release receivers, handlers, and animators cleanly on detach to keep RAM usage minimal.
 
 package shree.tvhome
 
@@ -84,14 +84,14 @@ class TopHeaderBar(
     private var showConnectingAlt = false
     private var lastShownSsid = ""
 
-    // Refreshes time, RAM, and Wi-Fi status whenever system time or network intents arrive.
+    // Refreshes RAM and Wi-Fi indicators on system time or Wi-Fi state broadcasts.
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             syncLiveStatus(refreshProfile = false)
         }
     }
 
-    // Cycles status text/bubbles smoothly while Wi-Fi is enabling or disconnected.
+    // Cycles status text or disconnected bubble smoothly while Wi-Fi is enabling or offline.
     private val cycleRunnable = object : Runnable {
         override fun run() {
             if (!::wifiLabelTv.isInitialized) return
@@ -109,14 +109,16 @@ class TopHeaderBar(
         }
     }
 
-    // Initializes the profile greeting hero, action buttons, and dynamic cutout alignment.
+    // Builds the profile/greeting hero group and right-side navigation controls using dynamic sizing.
     init {
         clipChildren = false
         clipToPadding = false
 
-        val screenH = context.resources.displayMetrics.heightPixels
-        val barHeight = maxOf(dp(36), (screenH * 0.052f).toInt())
-        val avatarSize = (barHeight * 2.25f).toInt()
+        val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.054f, minDp = 34, maxDp = 48, horizontal = false)
+        val avatarSize = (barHeight * 2.25f).roundToInt()
+        val navGap = LayoutMetrics.dynamicSpace(context, ratio = 0.008f, minDp = 5, maxDp = 12, horizontal = true)
+        val seamGap = LayoutMetrics.dpF(context, 4f)
+        val avatarRadius = avatarSize / 2f
 
         val rightControls = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -127,10 +129,10 @@ class TopHeaderBar(
 
         val navItems = listOf(
             NavActionSpec("pill", "mic", "Voice Search", Color.rgb(120, 195, 255), "nav_voice") { callbacks.onVoiceSearch() },
-            NavActionSpec("ram", "bolt", "RAM --%", Color.rgb(255, 215, 95), "nav_ram") {
+            NavActionSpec("ram", "bolt", "RAM", Color.rgb(255, 215, 95), "nav_ram") {
                 System.gc()
                 updateRamInfo()
-                Toast.makeText(context, "Memory refreshed • ${ramTv.text}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, ramTv.text, Toast.LENGTH_SHORT).show()
             },
             NavActionSpec("wifi", "wifi", "WI-FI", Color.WHITE, "nav_wifi") { callbacks.onWifiClick() },
             NavActionSpec("circle", "bell", null, Color.rgb(255, 210, 95), "nav_alerts") { callbacks.onAlertsClick() },
@@ -140,7 +142,7 @@ class TopHeaderBar(
         )
 
         navItems.forEachIndexed { index, spec ->
-            val leftPad = if (index == 0) 0 else dp(8)
+            val leftPad = if (index == 0) 0 else navGap
             val view = when (spec.kind) {
                 "ram" -> buildRamPill(spec)
                 "wifi" -> buildWifiWidget(spec, barHeight)
@@ -160,16 +162,18 @@ class TopHeaderBar(
             clipToPadding = false
         }
 
-        val avatarRadius = avatarSize / 2f
-        val seamGap = LayoutMetrics.dpF(context, 4f)
+        val greetingPadStart = (avatarRadius + seamGap + LayoutMetrics.dpF(context, 10f)).roundToInt()
+        val greetingPadEnd = LayoutMetrics.dynamicSpace(context, ratio = 0.014f, minDp = 12, maxDp = 22, horizontal = true)
+        val greetingPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.01f, minDp = 5, maxDp = 10, horizontal = false)
+        val greetingH = LayoutMetrics.dynamicSpace(context, ratio = 0.056f, minDp = 36, maxDp = 48, horizontal = false)
 
         greetingCard = GreetingCardDesign(context, settings.userName, settings.greetingPhrase, settings.accentColor).apply {
-            setPadding((avatarRadius + seamGap + dp(10)).toInt(), dp(7), dp(16), dp(7))
+            setPadding(greetingPadStart, greetingPadV, greetingPadEnd, greetingPadV)
         }
         profileHeroGroup.addView(
             greetingCard,
-            LayoutParams(-2, dp(40), Gravity.START or Gravity.CENTER_VERTICAL).apply {
-                leftMargin = avatarRadius.toInt()
+            LayoutParams(-2, greetingH, Gravity.START or Gravity.CENTER_VERTICAL).apply {
+                leftMargin = avatarRadius.roundToInt()
             }
         )
 
@@ -181,20 +185,20 @@ class TopHeaderBar(
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(settings.accentColor)
-                setStroke(dp(2), Color.WHITE)
+                setStroke(LayoutMetrics.dp(context, 2), Color.WHITE)
             }
             setOnFocusChangeListener { v, f ->
                 AnimationController.animateFocus(v, f, settings.motionStyle, 1.08f, 12f)
                 v.background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setColor(settings.accentColor)
-                    setStroke(dp(if (f) 3 else 2), if (f) settings.accentColor else Color.WHITE)
+                    setStroke(LayoutMetrics.dp(context, if (f) 3 else 2), if (f) settings.accentColor else Color.WHITE)
                 }
             }
             setOnClickListener { callbacks.onProfileClick() }
         }
         avatarInitialTv = TextView(context).apply {
-            textSize = 30f
+            textSize = 28f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
@@ -222,7 +226,7 @@ class TopHeaderBar(
             textSize = 10.5f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.argb(250, 255, 246, 225))
-            setPadding(dp(12), dp(4), dp(14), dp(4))
+            setPadding(greetingPadEnd, greetingPadV / 2, greetingPadEnd, greetingPadV / 2)
             isSingleLine = true
             elevation = LayoutMetrics.dpF(context, 10f)
             visibility = View.GONE
@@ -233,9 +237,10 @@ class TopHeaderBar(
         addView(profileHeroGroup, LayoutParams(-2, barHeight, Gravity.START or Gravity.CENTER_VERTICAL))
 
         post {
-            val availableForLeft = width - rightControls.width - dp(16)
-            if (availableForLeft > avatarSize + dp(40)) {
-                greetingCard.layoutParams.width = minOf(greetingCard.measuredWidth, availableForLeft - dp(20))
+            val minGap = LayoutMetrics.dynamicSpace(context, ratio = 0.015f, minDp = 12, maxDp = 24, horizontal = true)
+            val availableForLeft = width - rightControls.width - minGap
+            if (availableForLeft > avatarSize + minGap * 2) {
+                greetingCard.layoutParams.width = minOf(greetingCard.measuredWidth, availableForLeft - minGap)
                 greetingCard.requestLayout()
             }
         }
@@ -244,17 +249,20 @@ class TopHeaderBar(
         settings.addStyleListener { greetingCard.setAccentColor(settings.accentColor) }
     }
 
-    // Builds the RAM usage pill in the top navigation bar.
     private fun buildRamPill(spec: NavActionSpec): View {
         ramTv = makeText(spec.label.orEmpty(), 12.5f, Color.WHITE, true)
+        val padH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 16, horizontal = true)
+        val iconSize = LayoutMetrics.dynamicSpace(context, ratio = 0.022f, minDp = 13, maxDp = 18, horizontal = false)
         return LinearLayout(context).apply {
             tag = spec.tag
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(13), 0, dp(13), 0)
+            setPadding(padH, 0, padH, 0)
             isFocusable = true
             isClickable = true
-            addView(VectorGlyphDesign(context, spec.icon, spec.tint), LinearLayout.LayoutParams(dp(15), dp(15)).apply { rightMargin = dp(6) })
+            addView(VectorGlyphDesign(context, spec.icon, spec.tint), LinearLayout.LayoutParams(iconSize, iconSize).apply {
+                rightMargin = padH / 2
+            })
             addView(ramTv)
             background = pillBg(false, settings.accentColor)
             setOnFocusChangeListener { v, f ->
@@ -265,22 +273,25 @@ class TopHeaderBar(
         }
     }
 
-    // Builds the Wi-Fi indicator pill and status bubble below it.
     private fun buildWifiWidget(spec: NavActionSpec, barHeight: Int): View {
         val wifiWrapper = FrameLayout(context).apply {
             clipChildren = false
             clipToPadding = false
         }
+        val padH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 18, horizontal = true)
+        val iconSize = LayoutMetrics.dynamicSpace(context, ratio = 0.024f, minDp = 14, maxDp = 19, horizontal = false)
         wifiIconView = VectorGlyphDesign(context, spec.icon, spec.tint)
         wifiLabelTv = makeText(spec.label.orEmpty(), 13f, Color.WHITE, true)
         wifiPill = LinearLayout(context).apply {
             tag = spec.tag
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(14), 0, dp(14), 0)
+            setPadding(padH, 0, padH, 0)
             isFocusable = true
             isClickable = true
-            addView(wifiIconView, LinearLayout.LayoutParams(dp(16), dp(16)).apply { rightMargin = dp(6) })
+            addView(wifiIconView, LinearLayout.LayoutParams(iconSize, iconSize).apply {
+                rightMargin = padH / 2
+            })
             addView(wifiLabelTv)
             background = pillBg(false, settings.accentColor)
             setOnFocusChangeListener { v, f ->
@@ -289,7 +300,7 @@ class TopHeaderBar(
                     val green = Color.rgb(46, 232, 138)
                     v.background = GradientDrawable().apply {
                         setColor(if (f) Color.argb(125, 34, 130, 86) else Color.argb(75, 24, 98, 64))
-                        setStroke(dp(if (f) 2 else 1), if (f) Color.WHITE else green)
+                        setStroke(LayoutMetrics.dp(context, if (f) 2 else 1), if (f) Color.WHITE else green)
                         cornerRadius = LayoutMetrics.dpF(context, 22f)
                     }
                 } else {
@@ -301,30 +312,34 @@ class TopHeaderBar(
 
         wifiWrapper.addView(wifiPill, LayoutParams(-2, barHeight, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
 
+        val bubbleTop = barHeight + LayoutMetrics.dynamicSpace(context, ratio = 0.008f, minDp = 4, maxDp = 8, horizontal = false)
+        val bubblePadH = LayoutMetrics.dynamicSpace(context, ratio = 0.008f, minDp = 7, maxDp = 12, horizontal = true)
+        val bubblePadV = LayoutMetrics.dynamicSpace(context, ratio = 0.004f, minDp = 2, maxDp = 5, horizontal = false)
+        val bubbleMaxW = LayoutMetrics.dynamicSpace(context, ratio = 0.13f, minDp = 110, maxDp = 175, horizontal = true)
+
         wifiBubbleTv = TextView(context).apply {
             textSize = 9.5f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
-            setPadding(dp(9), dp(2), dp(9), dp(2))
-            maxWidth = dp(135)
+            setPadding(bubblePadH, bubblePadV, bubblePadH, bubblePadV)
+            maxWidth = bubbleMaxW
             ellipsize = TextUtils.TruncateAt.END
             isSingleLine = true
             visibility = View.GONE
         }
         wifiWrapper.addView(
             wifiBubbleTv,
-            LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(41) }
+            LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = bubbleTop }
         )
         return wifiWrapper
     }
 
-    // Exposes the floating nudge text view for placement on the root layout.
     fun createFloatingNudgeView(): TextView = nudgeOverlayBubble
 
-    // Refreshes profile avatar bitmap or initial fallback from saved preferences.
+    // Refreshes profile avatar bitmap or initial fallback safely.
     fun refreshProfileAvatar() {
-        val cleanName = settings.userName.ifBlank { "TV" }
-        val initial = cleanName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "T"
+        val cleanName = settings.userName.ifBlank { "A" }
+        val initial = cleanName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "A"
         avatarInitialTv.text = initial
 
         val picUriStr = settings.profilePicUri
@@ -336,7 +351,9 @@ class TopHeaderBar(
                     BitmapFactory.decodeStream(it, null, opts)
                 }
                 if (rawBmp != null) {
-                    avatarImageView.setImageBitmap(makeCircularBitmap(rawBmp))
+                    val circ = makeCircularBitmap(rawBmp)
+                    if (!rawBmp.isRecycled) rawBmp.recycle()
+                    avatarImageView.setImageBitmap(circ)
                     avatarImageView.scaleX = 1.0f
                     avatarImageView.scaleY = 1.0f
                     avatarImageView.visibility = View.VISIBLE
@@ -349,7 +366,6 @@ class TopHeaderBar(
         avatarInitialTv.visibility = View.VISIBLE
     }
 
-    // Crops and transforms the selected profile image into a circular avatar bitmap.
     private fun makeCircularBitmap(src: Bitmap): Bitmap {
         val outSize = 240
         val output = Bitmap.createBitmap(outSize, outSize, Bitmap.Config.ARGB_8888)
@@ -378,7 +394,6 @@ class TopHeaderBar(
         return output
     }
 
-    // Synchronizes profile avatar, time-based greeting, RAM percentage, and Wi-Fi state.
     private fun syncLiveStatus(refreshProfile: Boolean) {
         if (refreshProfile) refreshProfileAvatar()
         refreshGreeting()
@@ -386,7 +401,6 @@ class TopHeaderBar(
         updateWifiVisualState()
     }
 
-    // Reads system memory info and updates the RAM usage label.
     private fun updateRamInfo() {
         try {
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return
@@ -401,7 +415,6 @@ class TopHeaderBar(
         }
     }
 
-    // Updates Wi-Fi pill color, SSID bubble, and subtle status animations when Wi-Fi state changes.
     @Suppress("DEPRECATION")
     private fun updateWifiVisualState() {
         val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -432,7 +445,7 @@ class TopHeaderBar(
                 wifiLabelTv.text = "WI-FI"
                 wifiPill.background = GradientDrawable().apply {
                     setColor(Color.argb(75, 24, 98, 64))
-                    setStroke(dp(2), green)
+                    setStroke(LayoutMetrics.dp(context, 2), green)
                     cornerRadius = LayoutMetrics.dpF(context, 22f)
                 }
                 wifiBubbleTv.text = " $connectedSsid"
@@ -442,7 +455,7 @@ class TopHeaderBar(
                 wifiBubbleTv.scaleY = 1f
                 wifiBubbleTv.background = GradientDrawable().apply {
                     setColor(Color.argb(205, 18, 72, 48))
-                    setStroke(dp(1), green)
+                    setStroke(LayoutMetrics.dp(context, 1), green)
                     cornerRadius = LayoutMetrics.dpF(context, 12f)
                 }
                 wifiBubbleTv.visibility = View.VISIBLE
@@ -476,7 +489,6 @@ class TopHeaderBar(
         }
     }
 
-    // Runs a gentle pendulum swing on the connected SSID indicator badge.
     private fun startPendulumSwing() {
         wifiBubbleTv.post {
             wifiBubbleTv.pivotX = wifiBubbleTv.width / 2f
@@ -492,21 +504,21 @@ class TopHeaderBar(
         }
     }
 
-    // Briefly shows a subtle disconnected indicator bubble when offline.
     private fun triggerMistBubbleCycle() {
         wifiBubbleTv.animate().cancel()
-        wifiBubbleTv.text = "○ No Internet"
+        wifiBubbleTv.text = "○"
         wifiBubbleTv.background = GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(Color.argb(165, 95, 145, 210), Color.argb(120, 55, 90, 150))
         ).apply {
-            setStroke(dp(1), Color.argb(160, 185, 225, 255))
+            setStroke(LayoutMetrics.dp(context, 1), Color.argb(160, 185, 225, 255))
             cornerRadius = LayoutMetrics.dpF(context, 12f)
         }
 
+        val dropY = LayoutMetrics.dynamicSpace(context, ratio = 0.015f, minDp = 8, maxDp = 14, horizontal = false).toFloat()
         wifiBubbleTv.visibility = View.VISIBLE
         wifiBubbleTv.alpha = 0f
-        wifiBubbleTv.translationY = -dp(10).toFloat()
+        wifiBubbleTv.translationY = -dropY
         wifiBubbleTv.scaleX = 0.88f
         wifiBubbleTv.scaleY = 0.88f
         wifiBubbleTv.animate()
@@ -519,7 +531,7 @@ class TopHeaderBar(
             if (wifiStateMode == 0 && wifiBubbleTv.visibility == View.VISIBLE) {
                 wifiBubbleTv.animate()
                     .alpha(0f)
-                    .translationY(-dp(12).toFloat())
+                    .translationY(-dropY)
                     .scaleX(1.16f)
                     .scaleY(0.80f)
                     .setDuration(650L)
@@ -530,13 +542,11 @@ class TopHeaderBar(
         }, 4200L)
     }
 
-    // Updates greeting text and accent color on the greeting chip.
     fun refreshGreeting() {
         greetingCard.updateGreeting(settings.userName, settings.greetingPhrase)
         greetingCard.setAccentColor(settings.accentColor)
     }
 
-    // Registers time and Wi-Fi receivers when the bar attaches to a window.
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         if (!receiverRegistered) {
@@ -558,12 +568,13 @@ class TopHeaderBar(
         }
     }
 
-    // Cancels pending handlers/animations and unregisters receivers when detached.
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         handler.removeCallbacksAndMessages(null)
         swingAnim?.cancel()
         breatheAnim?.cancel()
+        swingAnim = null
+        breatheAnim = null
         if (receiverRegistered) {
             try {
                 context.unregisterReceiver(statusReceiver)
@@ -572,15 +583,18 @@ class TopHeaderBar(
         }
     }
 
-    // Creates a labeled vector-icon pill button for top navigation actions.
     private fun makeVectorPill(icon: String, label: String, iconTint: Int, tagStr: String, onClick: () -> Unit) = LinearLayout(context).apply {
         tag = tagStr
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER
-        setPadding(dp(14), 0, dp(15), 0)
+        val padH = LayoutMetrics.dynamicSpace(context, ratio = 0.013f, minDp = 11, maxDp = 18, horizontal = true)
+        val iconSize = LayoutMetrics.dynamicSpace(context, ratio = 0.024f, minDp = 14, maxDp = 19, horizontal = false)
+        setPadding(padH, 0, padH, 0)
         isFocusable = true
         isClickable = true
-        addView(VectorGlyphDesign(context, icon, iconTint), LinearLayout.LayoutParams(dp(16), dp(16)).apply { rightMargin = dp(7) })
+        addView(VectorGlyphDesign(context, icon, iconTint), LinearLayout.LayoutParams(iconSize, iconSize).apply {
+            rightMargin = padH / 2
+        })
         addView(makeText(label, 13f, Color.WHITE, true))
         background = pillBg(false, settings.accentColor)
         setOnFocusChangeListener { v, f ->
@@ -590,7 +604,6 @@ class TopHeaderBar(
         setOnClickListener { onClick() }
     }
 
-    // Creates a circular icon button with focus micro-rotation for alerts, customize, quick, and power.
     private fun makeVectorCircleButton(icon: String, tint: Int, tagStr: String, onClick: () -> Unit) = FrameLayout(context).apply {
         tag = tagStr
         isFocusable = true
@@ -598,17 +611,18 @@ class TopHeaderBar(
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(Color.argb(62, 22, 32, 68))
-            setStroke(dp(1), Color.argb(105, 255, 255, 255))
+            setStroke(LayoutMetrics.dp(context, 1), Color.argb(105, 255, 255, 255))
         }
+        val iconSize = LayoutMetrics.dynamicSpace(context, ratio = 0.026f, minDp = 16, maxDp = 22, horizontal = false)
         val iv = VectorGlyphDesign(context, icon, tint)
-        addView(iv, LayoutParams(dp(18), dp(18), Gravity.CENTER))
+        addView(iv, LayoutParams(iconSize, iconSize, Gravity.CENTER))
         setOnClickListener { onClick() }
         setOnFocusChangeListener { v, f ->
             AnimationController.animateFocus(v, f, settings.motionStyle, 1.15f, 8f)
             v.background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(if (f) Color.argb(120, 255, 255, 255) else Color.argb(62, 22, 32, 68))
-                setStroke(dp(if (f) 2 else 1), if (f) settings.accentColor else Color.argb(105, 255, 255, 255))
+                setStroke(LayoutMetrics.dp(context, if (f) 2 else 1), if (f) settings.accentColor else Color.argb(105, 255, 255, 255))
             }
             when (icon) {
                 "gear" -> iv.animate().rotation(if (f) 60f else 0f).setDuration(240).start()
@@ -618,10 +632,9 @@ class TopHeaderBar(
         }
     }
 
-    // Builds pill background styling for unfocused and focused states.
     private fun pillBg(focused: Boolean, accent: Int) = GradientDrawable().apply {
         setColor(if (focused) Color.argb(110, 255, 255, 255) else Color.argb(54, 22, 32, 68))
-        setStroke(dp(if (focused) 2 else 1), if (focused) accent else Color.argb(95, 255, 255, 255))
+        setStroke(LayoutMetrics.dp(context, if (focused) 2 else 1), if (focused) accent else Color.argb(95, 255, 255, 255))
         cornerRadius = LayoutMetrics.dpF(context, 22f)
     }
 
@@ -631,6 +644,4 @@ class TopHeaderBar(
         setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
-
-    private fun dp(value: Int): Int = LayoutMetrics.dp(context, value)
 }
