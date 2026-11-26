@@ -1,6 +1,6 @@
 // Important instructions:
 // - Act as the single source of truth for persisted launcher preferences and style change listeners.
-// - Automatically derive default device identity from OS settings without hardcoded owner names.
+// - Include clock widget style and location mode ("auto" / "manual") so all components stay synchronized.
 
 package shree.tvhome.core
 
@@ -51,6 +51,8 @@ class AppSettings(context: Context) {
         const val PREF_CACHED_WEATHER_CODE = "cached_weather_code"
         const val PREF_MOTION_STYLE = "motion_style"
         const val PREF_WEATHER_CITY = "weather_city"
+        const val PREF_CLOCK_STYLE = "clock_widget_style"
+        const val PREF_LOCATION_MODE = "weather_location_mode"
 
         // Profile avatar and crop transformation keys.
         const val PREF_PROFILE_PIC_URI = "profile_pic_uri"
@@ -114,6 +116,24 @@ class AppSettings(context: Context) {
         get() = prefs.getString(PREF_TILE_COLOR, Themes.THEMES.first().key) ?: Themes.THEMES.first().key
         set(value) {
             prefs.edit().putString(PREF_TILE_COLOR, value).apply()
+            notifyStyleChanged()
+        }
+
+    // Selected clock widget style key from Themes.CLOCK_STYLES; notifies style listeners on change.
+    var clockStyle: String
+        get() = prefs.getString(PREF_CLOCK_STYLE, Themes.CLOCK_STYLES.first().key)
+            ?: Themes.CLOCK_STYLES.first().key
+        set(value) {
+            prefs.edit().putString(PREF_CLOCK_STYLE, value).apply()
+            notifyStyleChanged()
+        }
+
+    // Location mode ("auto" for automatic timezone/locale resolution, "manual" for user-selected city).
+    var locationMode: String
+        get() = prefs.getString(PREF_LOCATION_MODE, Themes.LOCATION_MODES.first().key)
+            ?: Themes.LOCATION_MODES.first().key
+        set(value) {
+            prefs.edit().putString(PREF_LOCATION_MODE, value).apply()
             notifyStyleChanged()
         }
 
