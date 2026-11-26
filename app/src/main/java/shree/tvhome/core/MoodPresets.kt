@@ -214,3 +214,4 @@ object MoodPresets {
         settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
         settings.liveWallpaperMode = preset.sceneKey
     }
+}
