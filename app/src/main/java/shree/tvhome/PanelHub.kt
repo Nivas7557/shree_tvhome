@@ -1,5 +1,6 @@
 // Important instructions:
-// - Act as the universal panel controller (CPU) coordinating panels, live previews, and focus restoration.
+// - Coordinate drawer panels and live visual updates without forcing focus traps or focus jumps.
+// - Derive drawer margins and paddings proportionally from LayoutMetrics.
 
 package shree.tvhome
 
@@ -7,7 +8,6 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -19,9 +19,9 @@ import shree.tvhome.core.AppSettings
 import shree.tvhome.core.LayoutMetrics
 import shree.tvhome.core.Themes
 import shree.tvhome.design.AppsShelfDesign
-import shree.tvhome.design.ClockWeatherCardDesign
 import shree.tvhome.panels.AlertsPowerPanel
 import shree.tvhome.panels.AvatarEditorPanel
+import shree.tvhome.panels.ClockWidgetPanel
 import shree.tvhome.panels.PanelSurfaceKit
 import shree.tvhome.panels.PictureAudioPanel
 import shree.tvhome.panels.QuickControlsPanel
@@ -92,7 +92,7 @@ class PanelHub(
                 )
             },
             PanelSpec(MODE_CLOCK_WIDGET, "🕰️  ", "Clock Widget Settings", "nav_customize") { panel ->
-                buildClockWidgetSettingsPanel(panel) {
+                ClockWidgetPanel.build(context, panel, settings, onLiveRefresh) {
                     open(MODE_CUSTOMIZE)
                 }
             },
@@ -150,7 +150,7 @@ class PanelHub(
                     Themes.getGlassPanelColors(settings.tileColor, settings.accentColor, elevated = true)
                 ).apply {
                     cornerRadius = LayoutMetrics.dpF(context, 24f)
-                    setStroke(dp(1.5f), LayoutMetrics.withAlpha(settings.accentColor, 185))
+                    setStroke(LayoutMetrics.dp(context, 2), LayoutMetrics.withAlpha(settings.accentColor, 185))
                 }
             }
         }
@@ -182,7 +182,6 @@ class PanelHub(
 
     fun open(mode: String) {
         val wasOpen = isOpen
-        val prevMode = currentMode
         currentMode = mode
         isOpen = true
 
@@ -201,7 +200,7 @@ class PanelHub(
             Themes.getGlassPanelColors(settings.tileColor, settings.accentColor, elevated = true)
         ).apply {
             cornerRadius = LayoutMetrics.dpF(context, 24f)
-            setStroke(dp(1.5f), LayoutMetrics.withAlpha(settings.accentColor, 165))
+            setStroke(LayoutMetrics.dp(context, 2), LayoutMetrics.withAlpha(settings.accentColor, 165))
         }
         drawerLayout.outlineProvider = null
 
@@ -211,27 +210,6 @@ class PanelHub(
 
         setupDrawerSkeleton()
         populateActivePanel()
-
-        // Restore focus back to the originating button (such as Wallpaper) when returning to Customize.
-        val desiredFocusTarget = if (mode == MODE_CUSTOMIZE && returnFocusTagInDrawer != null) {
-            activePanel?.findViewWithTag<View>(returnFocusTagInDrawer)
-        } else {
-            FocusRouter.findFirstFocusable(activePanel ?: drawerLayout)
-        }
-        if (mode == MODE_CUSTOMIZE && prevMode != MODE_CUSTOMIZE) {
-            returnFocusTagInDrawer = null
-        }
-
-        desiredFocusTarget?.let { targetView ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                targetView.isFocusedByDefault = true
-            }
-            targetView.post {
-                if (targetView.isAttachedToWindow && targetView.visibility == View.VISIBLE) {
-                    targetView.requestFocus()
-                }
-            }
-        }
 
         if (!wasOpen) {
             AnimationController.resetTransform(drawerLayout)
@@ -247,14 +225,14 @@ class PanelHub(
         isOpen = false
         currentMode = ""
         returnFocusTagInDrawer = null
-        val out = maxOf(dp(340f), drawerLayout.width + dp(30f))
+        val out = maxOf(LayoutMetrics.dp(context, 340), drawerLayout.width + LayoutMetrics.dp(context, 30))
 
         setBackgroundSiblingsFocusable(true)
 
         AnimationController.animatePanelExit(drawerLayout, stageWidget, out, settings.motionStyle) {
             scrim.visibility = View.GONE
             drawerLayout.visibility = View.GONE
-            mainPage.findViewWithTag<View>(returnTag)?.requestFocus()
+            mainPage.findViewWithTag<View>(returnTag)
         }
         drawerLayout.post { onLiveRefresh() }
     }
@@ -266,80 +244,20 @@ class PanelHub(
         }
     }
 
-    // Dedicated Clock Widget Settings panel showing live preview, clock styles, and location mode.
-    private fun buildClockWidgetSettingsPanel(panel: LinearLayout, onBack: () -> Unit) {
-        PanelSurfaceKit.addSectionHeader(ctx = context, parent = panel, settings = settings, label = "LIVE PREVIEW")
-        val previewWidget = ClockWeatherCardDesign(context, settings).apply {
-            isClickable = false
-        }
-        panel.addView(previewWidget, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8f) })
-
-        PanelSurfaceKit.addSectionHeader(ctx = context, parent = panel, settings = settings, label = "CLOCK STYLE")
-        PanelSurfaceKit.addSegmentedTrack(
-            ctx = context,
-            parent = panel,
-            settings = settings,
-            options = Themes.CLOCK_STYLES.map { it.key to it.label },
-            getSelected = { settings.clockStyle },
-            onSelect = { key ->
-                settings.clockStyle = key
-                previewWidget.refreshStyle()
-                onLiveRefresh()
-            }
-        )
-
-        PanelSurfaceKit.addSectionHeader(ctx = context, parent = panel, settings = settings, label = "LOCATION MODE")
-        PanelSurfaceKit.addSegmentedTrack(
-            ctx = context,
-            parent = panel,
-            settings = settings,
-            options = Themes.LOCATION_MODES.map { it.key to it.label },
-            getSelected = { settings.locationMode },
-            onSelect = { key ->
-                settings.locationMode = key
-                if (key == Themes.LOCATION_MODES.first().key) {
-                    settings.weatherCity = ""
-                    settings.prefs.edit()
-                        .remove(AppSettings.PREF_SAVED_LAT)
-                        .remove(AppSettings.PREF_SAVED_LON)
-                        .remove(AppSettings.PREF_CACHED_CITY)
-                        .apply()
-                }
-                previewWidget.triggerWeatherRefresh(true)
-                onLiveRefresh()
-            }
-        )
-
-        panel.addView(
-            PanelSurfaceKit.makeActionRow(
-                context, settings, "📍", "Choose Manual Location",
-                settings.weatherCity.ifBlank { "Select city with D-Pad or search" }
-            ) {
-                previewWidget.showLocationSelectorDialog()
-            },
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10f) }
-        )
-
-        panel.addView(
-            PanelSurfaceKit.makeActionRow(
-                context, settings, "‹", "Back to Customize", "Return to launcher customization", ""
-            ) {
-                onBack()
-            },
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16f) }
-        )
-    }
-
     private fun setupDrawerSkeleton() {
+        val padH = LayoutMetrics.dynamicSpace(context, ratio = 0.014f, minDp = 10, maxDp = 20, horizontal = true)
+        val padV = LayoutMetrics.dynamicSpace(context, ratio = 0.016f, minDp = 10, maxDp = 20, horizontal = false)
+        val closeSize = LayoutMetrics.dynamicSpace(context, ratio = 0.032f, minDp = 24, maxDp = 34, horizontal = false)
+
         drawerLayout.removeAllViews()
-        drawerLayout.setPadding(dp(14f), dp(14f), dp(14f), dp(14f))
+        drawerLayout.setPadding(padH, padV, padH, padV)
 
         val topRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             clipChildren = false
             clipToPadding = false
-            setPadding(dp(6f), dp(4f), dp(6f), dp(10f))
+            setPadding(padH / 2, padV / 3, padH / 2, padV / 2)
         }
 
         val headerSpec = panelRegistry.find { it.mode == currentMode } ?: panelRegistry.first()
@@ -354,7 +272,7 @@ class PanelHub(
                 setTextColor(settings.accentColor)
                 isFocusable = true
                 isClickable = true
-                setPadding(dp(6f), dp(3f), dp(8f), dp(3f))
+                setPadding(padH / 2, padV / 4, padH / 2, padV / 4)
                 background = PanelSurfaceKit.glassCardBg(context, settings.accentColor, false, settings.tileColor)
                 setOnFocusChangeListener { v, f ->
                     AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 3f)
@@ -362,7 +280,7 @@ class PanelHub(
                 }
                 setOnClickListener { open(parentMode) }
             }
-            topRow.addView(backCrumb, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8f) })
+            topRow.addView(backCrumb, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = padH / 2 })
         }
 
         topRow.addView(TextView(context).apply {
@@ -388,27 +306,26 @@ class PanelHub(
             }
             setOnClickListener { close() }
         }
-        topRow.addView(closeX, LinearLayout.LayoutParams(dp(28f), dp(28f)))
+        topRow.addView(closeX, LinearLayout.LayoutParams(closeSize, closeSize))
         drawerLayout.addView(topRow)
 
         drawerLayout.addView(
             View(context).apply { setBackgroundColor(Color.argb(60, 255, 255, 255)) },
-            LinearLayout.LayoutParams(-1, dp(1f)).apply { bottomMargin = dp(8f) }
+            LinearLayout.LayoutParams(-1, LayoutMetrics.dp(context, 1)).apply { bottomMargin = padV / 2 }
         )
 
         activeScroll = ScrollView(context).apply {
             isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
+            overScrollMode = ScrollView.OVER_SCROLL_NEVER
             isFillViewport = true
             clipChildren = true
             clipToPadding = true
-            setPadding(0, dp(2f), 0, dp(2f))
         }
         activePanel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             clipChildren = true
             clipToPadding = true
-            setPadding(dp(6f), dp(6f), dp(6f), dp(20f))
+            setPadding(padH / 2, padV / 2, padH / 2, padV)
         }
         drawerLayout.addView(activeScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         activeScroll?.addView(activePanel)
@@ -424,8 +341,6 @@ class PanelHub(
     private fun closeBtnBg(focused: Boolean) = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
         setColor(if (focused) Color.argb(165, 255, 75, 85) else Color.argb(55, 255, 255, 255))
-        setStroke(dp(1f), if (focused) Color.WHITE else Color.argb(85, 255, 255, 255))
+        setStroke(LayoutMetrics.dp(context, 1), if (focused) Color.WHITE else Color.argb(85, 255, 255, 255))
     }
-
-    private fun dp(v: Float): Int = LayoutMetrics.dpF(context, v).toInt()
 }
