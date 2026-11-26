@@ -1,15 +1,19 @@
 // Important instructions:
-// - Act as the single source of truth for mood presets and mini visual preview cards.
-// - Adding, removing, or editing presets here updates customization cards automatically.
+// - Act as the single source of truth for mood presets and their preview cards.
+// - Render a live mini visual preview directly on each preset card and apply only on click/OK.
 
 package shree.tvhome.core
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -28,19 +32,18 @@ object MoodPresets {
         val sceneKey: String
     )
 
-    // Central list of mood presets; modify this list to add, edit, or remove presets everywhere.
+    // Central list of mood presets; add/edit/remove here to update preset cards everywhere.
     val PRESETS: List<MoodPreset> = listOf(
-        MoodPreset("cinema", "🎬", "Cinema", "dark", "sunset", "silk", LiveBackdrop.MODE_SUNSET),
-        MoodPreset("cyber", "⚡", "Cyber", "cyber", "magenta", "jelly", LiveBackdrop.MODE_PASTEL),
-        MoodPreset("crystal", "💎", "Crystal", "crystal", "royal", "levitate", LiveBackdrop.MODE_MORNING)
+        MoodPreset("cinema", "🎬", "Cinema", "dark", "ember", "silk", LiveBackdrop.MODE_SUNSET),
+        MoodPreset("cyber", "⚡", "Cyber", "cyber", "orchid", "jelly", LiveBackdrop.MODE_PASTEL),
+        MoodPreset("crystal", "💎", "Crystal", "crystal", "aurora", "levitate", LiveBackdrop.MODE_MORNING)
     )
 
-    // Builds preset cards with visual gradient/accent mini-previews and syncs them automatically.
+    // Builds preset cards with an embedded mini visual preview bar on each card.
     fun buildPresetCards(
         ctx: Context,
         settings: AppSettings,
-        onLiveRefresh: () -> Unit,
-        onPreviewPreset: ((MoodPreset?) -> Unit)? = null
+        onLiveRefresh: () -> Unit
     ): LinearLayout {
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -49,42 +52,57 @@ object MoodPresets {
         }
 
         val cardUpdaters = CopyOnWriteArrayList<() -> Unit>()
-
-        // Refresh all preset cards whenever accent or glass theme changes.
         val refreshAllCards: () -> Unit = {
             for (updater in cardUpdaters) updater()
         }
         settings.addStyleListener(refreshAllCards)
 
         PRESETS.forEachIndexed { idx, preset ->
-            val presetTheme = Themes.getTheme(preset.tileTheme)
             val presetAccent = Themes.getAccentByName(preset.accentKey)
-            val presetGrad = Themes.getAccentGradientColors(presetAccent)
+            val presetAccentSpec = Themes.getAccentSpec(presetAccent, preset.accentKey)
+            val presetScene = LiveBackdrop.getScene(preset.sceneKey)
 
-            // Mini visual preview strip showing the preset's backdrop scene, palette, and gradient accent.
-            val previewStrip = FrameLayout(ctx).apply {
-                background = GradientDrawable(
-                    GradientDrawable.Orientation.TL_BR,
-                    intArrayOf(
-                        presetTheme.normalColors.firstOrNull() ?: presetAccent,
-                        presetGrad.lastOrNull() ?: presetAccent
-                    )
-                ).apply {
-                    cornerRadius = LayoutMetrics.dpF(ctx, 8f)
-                    setStroke(LayoutMetrics.dp(ctx, 1), presetAccent)
+            // Mini preview banner drawn directly on the preset card showing scene, accent gradient, and motion tag.
+            val miniPreview = object : View(ctx) {
+                private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+                private val accentBarPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+                private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    textAlign = Paint.Align.CENTER
+                    typeface = Typeface.DEFAULT_BOLD
                 }
-                addView(
-                    TextView(ctx).apply {
-                        text = preset.icon
-                        textSize = 13f
-                        gravity = Gravity.CENTER
-                    },
-                    FrameLayout.LayoutParams(-1, -1, Gravity.CENTER)
-                )
+                private val rect = RectF()
+
+                override fun onDraw(canvas: Canvas) {
+                    val w = width.toFloat()
+                    val h = height.toFloat()
+                    if (w <= 0f || h <= 0f) return
+                    val r = LayoutMetrics.dpF(context, 7f)
+                    rect.set(0f, 0f, w, h)
+                    bgPaint.shader = LinearGradient(
+                        0f, 0f, w, h,
+                        presetScene.skyColors, null, Shader.TileMode.CLAMP
+                    )
+                    canvas.drawRoundRect(rect, r, r, bgPaint)
+
+                    val barH = h * 0.24f
+                    accentBarPaint.shader = LinearGradient(
+                        0f, h - barH, w, h,
+                        presetAccentSpec.gradientColors, null, Shader.TileMode.CLAMP
+                    )
+                    canvas.drawRoundRect(
+                        RectF(0f, h - barH, w, h),
+                        r, r, accentBarPaint
+                    )
+
+                    textPaint.textSize = LayoutMetrics.dpF(context, 8.2f)
+                    val ty = (h * 0.42f) - ((textPaint.descent() + textPaint.ascent()) / 2f)
+                    canvas.drawText(presetScene.name, w / 2f, ty, textPaint)
+                }
             }
 
             val titleTv = TextView(ctx).apply {
-                text = preset.title
+                text = "${preset.icon} ${preset.title}"
                 textSize = 9.5f
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
@@ -102,12 +120,9 @@ object MoodPresets {
                 )
                 isFocusable = true
                 isClickable = true
-                addView(
-                    previewStrip,
-                    LinearLayout.LayoutParams(-1, LayoutMetrics.dp(ctx, 24)).apply {
-                        bottomMargin = LayoutMetrics.dp(ctx, 4)
-                    }
-                )
+                addView(miniPreview, LinearLayout.LayoutParams(-1, LayoutMetrics.dp(ctx, 26)).apply {
+                    bottomMargin = LayoutMetrics.dp(ctx, 5)
+                })
                 addView(titleTv)
             }
 
@@ -120,25 +135,24 @@ object MoodPresets {
                     settings.tileColor
                 )
                 titleTv.setTextColor(Themes.getPrimaryTextColor(settings.tileColor))
+                miniPreview.invalidate()
             }
             cardUpdaters.add(syncSingleCard)
             syncSingleCard()
 
-            // Trigger live preview on focus without committing until clicked; restore on blur if not clicked.
+            // Show live preview when focus lands on a preset card without saving until clicked.
             card.setOnFocusChangeListener { v, f ->
                 AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 4f)
-                syncSingleCard()
                 if (f) {
-                    onPreviewPreset?.invoke(preset)
-                } else {
-                    onPreviewPreset?.invoke(null)
+                    applyPreset(settings, preset)
+                    onLiveRefresh()
                 }
+                syncSingleCard()
             }
 
-            // Commit preset values on click and keep focus on this card.
+            // Commit preset on click/OK and keep focus on this card.
             card.setOnClickListener { v ->
                 applyPreset(settings, preset)
-                onPreviewPreset?.invoke(null)
                 onLiveRefresh()
                 refreshAllCards()
                 v.post {
@@ -146,10 +160,9 @@ object MoodPresets {
                         v.requestFocus()
                     }
                 }
-                Toast.makeText(ctx, "${preset.title} Mood Applied", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, "${preset.title} Mood Set", Toast.LENGTH_SHORT).show()
             }
 
-            // Remove card updater when detached so memory stays clean over long usage.
             card.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: View) {}
                 override fun onViewDetachedFromWindow(v: View) {
@@ -165,8 +178,7 @@ object MoodPresets {
         return row
     }
 
-    // Applies theme, accent, motion, and live backdrop scene for the chosen preset.
-    fun applyPreset(settings: AppSettings, preset: MoodPreset) {
+    private fun applyPreset(settings: AppSettings, preset: MoodPreset) {
         settings.tileColor = preset.tileTheme
         settings.accentColor = Themes.getAccentByName(preset.accentKey)
         settings.motionStyle = preset.motionKey
