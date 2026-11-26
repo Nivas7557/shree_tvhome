@@ -1,6 +1,6 @@
 // Important instructions:
-// - Read motion styles, palettes, accents, tile sizes, and shapes directly from their core sources.
-// - Keep customization controls free of favorite badge selectors.
+// - Reference mood presets from MoodPresets so adding/deleting/modifying presets updates UI automatically.
+// - Update controls in-place on preset selection so focus stays inside the panel instead of jumping to TopHeaderBar.
 
 package shree.tvhome.panels
 
@@ -17,31 +17,15 @@ import android.view.WindowManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import shree.tvhome.core.AnimationController
 import shree.tvhome.core.AppSettings
 import shree.tvhome.core.LayoutMetrics
-import shree.tvhome.core.LiveBackdrop
+import shree.tvhome.core.MoodPresets
 import shree.tvhome.core.Themes
 
 object StyleCustomizePanel {
 
-    private data class MoodPresetSpec(
-        val icon: String,
-        val title: String,
-        val tileTheme: String,
-        val accentKey: String,
-        val motionKey: String,
-        val sceneKey: String
-    )
-
-    private val moodPresets = listOf(
-        MoodPresetSpec("🎬", "Cinema", "dark", "sunset", "silk", LiveBackdrop.MODE_SUNSET),
-        MoodPresetSpec("⚡", "Cyber", "cyber", "magenta", "jelly", LiveBackdrop.MODE_PASTEL),
-        MoodPresetSpec("💎", "Crystal", "crystal", "royal", "levitate", LiveBackdrop.MODE_MORNING)
-    )
-
-    // Builds all customization controls inside the target panel container.
+    // Builds all customization sections inside the target panel container.
     fun build(
         ctx: Context,
         panel: LinearLayout,
@@ -54,46 +38,7 @@ object StyleCustomizePanel {
         onCloseDrawer: () -> Unit
     ) {
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "ONE-TAP MOOD PRESETS")
-        val moodRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            clipChildren = false
-            clipToPadding = false
-        }
-        moodPresets.forEachIndexed { idx, preset ->
-            val btn = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(ctx, 6), dp(ctx, 8), dp(ctx, 6), dp(ctx, 8))
-                isFocusable = true
-                isClickable = true
-                background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, false, settings.tileColor)
-                setOnFocusChangeListener { v, f ->
-                    AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 4f)
-                    v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, f, settings.tileColor)
-                }
-                setOnClickListener {
-                    settings.tileColor = preset.tileTheme
-                    settings.accentColor = Themes.getAccentByName(preset.accentKey)
-                    settings.motionStyle = preset.motionKey
-                    settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
-                    settings.liveWallpaperMode = preset.sceneKey
-                    onLiveRefresh()
-                    onRefreshPanel()
-                    Toast.makeText(ctx, "${preset.title} Mood Applied", Toast.LENGTH_SHORT).show()
-                }
-                addView(TextView(ctx).apply { text = preset.icon; textSize = 14f; gravity = Gravity.CENTER })
-                addView(TextView(ctx).apply {
-                    text = preset.title
-                    textSize = 9.5f
-                    typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                })
-            }
-            moodRow.addView(btn, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                if (idx < moodPresets.lastIndex) rightMargin = dp(ctx, 6)
-            })
-        }
+        val moodRow = MoodPresets.buildPresetCards(ctx, settings, onLiveRefresh)
         panel.addView(moodRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 6) })
 
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "ACCOUNT & VISIBILITY")
@@ -305,7 +250,7 @@ object StyleCustomizePanel {
         }
     }
 
-    // Shows a dialog to enter or reset a custom greeting phrase.
+    // Shows a dialog to enter or reset a custom greeting phrase using dedicated dialog buttons.
     private fun showGreetingDialog(ctx: Context, settings: AppSettings, onSaved: () -> Unit) {
         val dialog = Dialog(ctx)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -344,20 +289,20 @@ object StyleCustomizePanel {
         box.addView(input, LinearLayout.LayoutParams(dp(ctx, 310), -2))
         val btnRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         btnRow.addView(
-            PanelSurfaceKit.makeActionRow(ctx, settings, "↺", "Auto Reset", "Time-based", "") {
+            makeDialogButton(ctx, settings, "↺  Auto Reset", false) {
                 settings.greetingPhrase = ""
                 onSaved()
                 dialog.dismiss()
             },
-            LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(ctx, 8) }
+            LinearLayout.LayoutParams(0, dp(ctx, 40), 1f).apply { rightMargin = dp(ctx, 8) }
         )
         btnRow.addView(
-            PanelSurfaceKit.makeActionRow(ctx, settings, "✓", "Save", "Apply", "") {
+            makeDialogButton(ctx, settings, "✓  Save", true) {
                 settings.greetingPhrase = input.text.toString().trim()
                 onSaved()
                 dialog.dismiss()
             },
-            LinearLayout.LayoutParams(0, -2, 1f)
+            LinearLayout.LayoutParams(0, dp(ctx, 40), 1f)
         )
         box.addView(btnRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(ctx, 12) })
         dialog.setContentView(box)
@@ -367,6 +312,28 @@ object StyleCustomizePanel {
             setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         }
         dialog.show()
+    }
+
+    private fun makeDialogButton(
+        ctx: Context,
+        settings: AppSettings,
+        label: String,
+        highlight: Boolean,
+        onClick: () -> Unit
+    ) = TextView(ctx).apply {
+        text = label
+        textSize = 10.5f
+        typeface = Typeface.DEFAULT_BOLD
+        setTextColor(Color.WHITE)
+        gravity = Gravity.CENTER
+        isFocusable = true
+        isClickable = true
+        background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, highlight, settings.tileColor)
+        setOnFocusChangeListener { v, f ->
+            AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 4f)
+            v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, f || highlight, settings.tileColor)
+        }
+        setOnClickListener { onClick() }
     }
 
     private fun makeActionTile(
