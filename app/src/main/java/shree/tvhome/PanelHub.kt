@@ -1,6 +1,5 @@
 // Important instructions:
-// - Act as the universal panel controller (CPU) coordinating panels, live preview stage, and focus restoration.
-// - Restore focus to the exact trigger item (such as Wallpaper row) when returning from sub-panels.
+// - Act as the universal panel controller (CPU) coordinating panels, live previews, and focus restoration.
 
 package shree.tvhome
 
@@ -20,9 +19,9 @@ import shree.tvhome.core.AppSettings
 import shree.tvhome.core.LayoutMetrics
 import shree.tvhome.core.Themes
 import shree.tvhome.design.AppsShelfDesign
+import shree.tvhome.design.ClockWeatherCardDesign
 import shree.tvhome.panels.AlertsPowerPanel
 import shree.tvhome.panels.AvatarEditorPanel
-import shree.tvhome.panels.ClockWidgetPanel
 import shree.tvhome.panels.PanelSurfaceKit
 import shree.tvhome.panels.PictureAudioPanel
 import shree.tvhome.panels.QuickControlsPanel
@@ -50,12 +49,15 @@ class PanelHub(
         const val MODE_ALERTS = "alerts"
         const val MODE_POWER = "power"
         const val MODE_WALLPAPER_EDIT = "wp_edit"
-        const val MODE_CLOCK_WIDGET = "clock_widget"
+        const val MODE_CLOCK_WIDGET = "clock_widget_settings"
         const val MODE_SUB_INPUTS = "sub_inputs"
         const val MODE_SUB_PICTURE = "sub_picture"
         const val MODE_SUB_SOUND = "sub_sound"
         const val MODE_SUB_BLUETOOTH = "sub_bluetooth"
         const val MODE_SUB_STORAGE = "sub_storage"
+
+        const val TAG_WALLPAPER_TRIGGER = "customize_wallpaper_btn"
+        const val TAG_CLOCK_TRIGGER = "customize_clock_btn"
     }
 
     private data class PanelSpec(
@@ -63,33 +65,44 @@ class PanelHub(
         val icon: String,
         val title: String,
         val navTag: String,
-        val parentMode: String,
         val render: (LinearLayout) -> Unit
     )
 
-    // Single registry mapping every panel mode to header metadata, parent nav tag, parent mode, and renderer.
+    private var returnFocusTagInDrawer: String? = null
+
     private val panelRegistry: List<PanelSpec> by lazy {
         listOf(
-            PanelSpec(MODE_QUICK, "⚙  ", "Quick Settings", "nav_quick", "") { panel ->
+            PanelSpec(MODE_QUICK, "⚙  ", "Quick Settings", "nav_quick") { panel ->
                 QuickControlsPanel.build(context, panel, settings) { target -> open(target) }
             },
-            PanelSpec(MODE_CUSTOMIZE, "✦  ", "Customize Launcher", "nav_customize", "") { panel ->
+            PanelSpec(MODE_CUSTOMIZE, "✦  ", "Customize Launcher", "nav_customize") { panel ->
                 StyleCustomizePanel.build(
                     context, panel, settings, onLiveRefresh, { populateActivePanel() },
                     ::showProfileEditDialog,
-                    { openWithReturnTarget(MODE_WALLPAPER_EDIT, "customize_wallpaper") },
-                    { openWithReturnTarget(MODE_CLOCK_WIDGET, "customize_clock_widget") },
-                    onOpenHiddenRibbon,
-                    ::close
+                    onOpenWallpaper = { triggerTag ->
+                        returnFocusTagInDrawer = triggerTag
+                        open(MODE_WALLPAPER_EDIT)
+                    },
+                    onOpenHidden = onOpenHiddenRibbon,
+                    onOpenClockSettings = {
+                        returnFocusTagInDrawer = TAG_CLOCK_TRIGGER
+                        open(MODE_CLOCK_WIDGET)
+                    },
+                    onCloseDrawer = ::close
                 )
             },
-            PanelSpec(MODE_WIFI, "📶  ", "Network & Internet", "nav_wifi", "") { panel ->
+            PanelSpec(MODE_CLOCK_WIDGET, "🕰️  ", "Clock Widget Settings", "nav_customize") { panel ->
+                buildClockWidgetSettingsPanel(panel) {
+                    open(MODE_CUSTOMIZE)
+                }
+            },
+            PanelSpec(MODE_WIFI, "📶  ", "Network & Internet", "nav_wifi") { panel ->
                 WifiPanel.build(context, panel, settings)
             },
-            PanelSpec(MODE_ALERTS, "🔔  ", "Alerts & Notifications", "nav_alerts", "") { panel ->
+            PanelSpec(MODE_ALERTS, "🔔  ", "Alerts & Notifications", "nav_alerts") { panel ->
                 AlertsPowerPanel.buildAlertsSubPanel(context, panel, settings) { populateActivePanel() }
             },
-            PanelSpec(MODE_POWER, "⏻  ", "Power & System", "nav_power", "") { panel ->
+            PanelSpec(MODE_POWER, "⏻  ", "Power & System", "nav_power") { panel ->
                 AlertsPowerPanel.build(
                     context, panel, settings,
                     onCloseDrawer = ::close,
@@ -99,30 +112,25 @@ class PanelHub(
                     }
                 )
             },
-            PanelSpec(MODE_WALLPAPER_EDIT, "🖼  ", "Wallpaper Studio", "nav_customize", MODE_CUSTOMIZE) { panel ->
+            PanelSpec(MODE_WALLPAPER_EDIT, "🖼  ", "Wallpaper Studio", "nav_customize") { panel ->
                 WallpaperPanel.build(context, panel, settings, onWallpaperRefresh, onPickWallpaper) {
-                    navigateBackToParent()
+                    open(MODE_CUSTOMIZE)
                 }
             },
-            PanelSpec(MODE_CLOCK_WIDGET, "🕰️  ", "Clock Widget Settings", "nav_customize", MODE_CUSTOMIZE) { panel ->
-                ClockWidgetPanel.build(context, panel, settings, onLiveRefresh) {
-                    navigateBackToParent()
-                }
+            PanelSpec(MODE_SUB_INPUTS, "📺  ", "TV Inputs & HDMI", "nav_quick") { panel ->
+                PictureAudioPanel.buildInputsSubPanel(context, panel, settings) { open(MODE_QUICK) }
             },
-            PanelSpec(MODE_SUB_INPUTS, "📺  ", "TV Inputs & HDMI", "nav_quick", MODE_QUICK) { panel ->
-                PictureAudioPanel.buildInputsSubPanel(context, panel, settings) { navigateBackToParent() }
+            PanelSpec(MODE_SUB_PICTURE, "☀  ", "Display & Sleep Timer", "nav_quick") { panel ->
+                PictureAudioPanel.buildPictureAndDisplayPanel(context, panel, settings) { open(MODE_QUICK) }
             },
-            PanelSpec(MODE_SUB_PICTURE, "☀  ", "Display & Sleep Timer", "nav_quick", MODE_QUICK) { panel ->
-                PictureAudioPanel.buildPictureAndDisplayPanel(context, panel, settings) { navigateBackToParent() }
+            PanelSpec(MODE_SUB_SOUND, "🔊  ", "Sound & Audio Out", "nav_quick") { panel ->
+                PictureAudioPanel.buildSoundSubPanel(context, panel, settings) { open(MODE_QUICK) }
             },
-            PanelSpec(MODE_SUB_SOUND, "🔊  ", "Sound & Audio Out", "nav_quick", MODE_QUICK) { panel ->
-                PictureAudioPanel.buildSoundSubPanel(context, panel, settings) { navigateBackToParent() }
+            PanelSpec(MODE_SUB_BLUETOOTH, "🔵  ", "Bluetooth & Remotes", "nav_quick") { panel ->
+                PictureAudioPanel.buildBluetoothPanel(context, panel, settings) { open(MODE_QUICK) }
             },
-            PanelSpec(MODE_SUB_BLUETOOTH, "🔵  ", "Bluetooth & Remotes", "nav_quick", MODE_QUICK) { panel ->
-                PictureAudioPanel.buildBluetoothPanel(context, panel, settings) { navigateBackToParent() }
-            },
-            PanelSpec(MODE_SUB_STORAGE, "💾  ", "Storage & Installed Apps", "nav_quick", MODE_QUICK) { panel ->
-                PictureAudioPanel.buildStorageAndAppsPanel(context, panel, settings) { navigateBackToParent() }
+            PanelSpec(MODE_SUB_STORAGE, "💾  ", "Storage & Installed Apps", "nav_quick") { panel ->
+                PictureAudioPanel.buildStorageAndAppsPanel(context, panel, settings) { open(MODE_QUICK) }
             }
         )
     }
@@ -130,12 +138,10 @@ class PanelHub(
     var isOpen = false
         private set
     private var currentMode = ""
-    private var pendingReturnTag: String? = null
     private var activeScroll: ScrollView? = null
     private var activePanel: LinearLayout? = null
     private var stageWidget: View? = null
 
-    // Automatically updates the open drawer glass surface when accent or palette settings change.
     init {
         settings.addStyleListener {
             if (isOpen) {
@@ -150,53 +156,19 @@ class PanelHub(
         }
     }
 
-    // Attaches the stage widget so panels can show or coordinate live previews cleanly.
     fun attachStageWidget(widget: View) {
         stageWidget = widget
     }
 
-    // Temporarily displays or hides the live clock/weather stage widget during sub-panel previews.
-    fun setStagePreviewVisible(visible: Boolean) {
-        val w = stageWidget ?: return
-        w.animate().cancel()
-        AnimationController.resetTransform(w)
-        w.visibility = if (visible) View.VISIBLE else View.GONE
-        w.alpha = if (visible) 1f else 0f
-    }
-
-    // Returns the active panel container for D-Pad focus routing.
     fun getActivePanelView(): ViewGroup? = activePanel
 
-    // Returns the top navigation button tag associated with the active panel.
     fun getParentNavTag(): String =
         panelRegistry.find { it.mode == currentMode }?.navTag ?: panelRegistry.first().navTag
 
-    // Toggles a panel open or closed when its trigger is activated again.
     fun toggle(mode: String) {
         if (isOpen && mode == currentMode) close() else open(mode)
     }
 
-    // Opens a sub-panel while recording which item in the parent panel should regain focus on return.
-    fun openWithReturnTarget(mode: String, returnTag: String) {
-        pendingReturnTag = returnTag
-        open(mode)
-    }
-
-    // Navigates back to the parent panel and restores focus to the exact item that opened the sub-panel.
-    fun navigateBackToParent() {
-        val spec = panelRegistry.find { it.mode == currentMode }
-        val targetMode = spec?.parentMode?.takeIf { it.isNotEmpty() } ?: MODE_CUSTOMIZE
-        val targetTag = pendingReturnTag
-        pendingReturnTag = null
-        open(targetMode)
-        if (targetTag != null) {
-            activePanel?.post {
-                activePanel?.findViewWithTag<View>(targetTag)?.requestFocus()
-            }
-        }
-    }
-
-    // Blocks or restores focusability on sibling containers while the side drawer is open.
     private fun setBackgroundSiblingsFocusable(enabled: Boolean) {
         val parent = drawerLayout.parent as? ViewGroup ?: return
         val focusability = if (enabled) ViewGroup.FOCUS_AFTER_DESCENDANTS else ViewGroup.FOCUS_BLOCK_DESCENDANTS
@@ -208,9 +180,9 @@ class PanelHub(
         }
     }
 
-    // Opens the requested panel mode, applies theme surface, populates content, and runs motion.
     fun open(mode: String) {
         val wasOpen = isOpen
+        val prevMode = currentMode
         currentMode = mode
         isOpen = true
 
@@ -240,34 +212,41 @@ class PanelHub(
         setupDrawerSkeleton()
         populateActivePanel()
 
-        // Keep the live clock/weather widget visible alongside Clock Widget Settings for live preview.
-        if (mode == MODE_CLOCK_WIDGET) {
-            setStagePreviewVisible(true)
-        } else if (!wasOpen) {
-            setStagePreviewVisible(false)
+        // Restore focus back to the originating button (such as Wallpaper) when returning to Customize.
+        val desiredFocusTarget = if (mode == MODE_CUSTOMIZE && returnFocusTagInDrawer != null) {
+            activePanel?.findViewWithTag<View>(returnFocusTagInDrawer)
+        } else {
+            FocusRouter.findFirstFocusable(activePanel ?: drawerLayout)
+        }
+        if (mode == MODE_CUSTOMIZE && prevMode != MODE_CUSTOMIZE) {
+            returnFocusTagInDrawer = null
         }
 
-        FocusRouter.findFirstFocusable(activePanel ?: drawerLayout)?.let { firstView ->
+        desiredFocusTarget?.let { targetView ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                firstView.isFocusedByDefault = true
+                targetView.isFocusedByDefault = true
+            }
+            targetView.post {
+                if (targetView.isAttachedToWindow && targetView.visibility == View.VISIBLE) {
+                    targetView.requestFocus()
+                }
             }
         }
 
         if (!wasOpen) {
             AnimationController.resetTransform(drawerLayout)
-            AnimationController.animatePanelEnter(drawerLayout, null, dynamicDrawerW, settings.motionStyle) {}
-        } else if (mode != MODE_CLOCK_WIDGET) {
+            AnimationController.animatePanelEnter(drawerLayout, stageWidget, dynamicDrawerW, settings.motionStyle) {}
+        } else {
             AnimationController.playDemoPreview(drawerLayout, settings.motionStyle)
         }
     }
 
-    // Closes the active panel drawer, restores background focus, and returns focus to the header trigger.
     fun close() {
         if (!isOpen) return
         val returnTag = getParentNavTag()
-        pendingReturnTag = null
         isOpen = false
         currentMode = ""
+        returnFocusTagInDrawer = null
         val out = maxOf(dp(340f), drawerLayout.width + dp(30f))
 
         setBackgroundSiblingsFocusable(true)
@@ -280,7 +259,6 @@ class PanelHub(
         drawerLayout.post { onLiveRefresh() }
     }
 
-    // Opens the profile and avatar editor dialog and refreshes visuals upon saving.
     fun showProfileEditDialog() {
         AvatarEditorPanel.show(context, settings, onPickProfilePic) {
             onLiveRefresh()
@@ -288,7 +266,70 @@ class PanelHub(
         }
     }
 
-    // Builds the common header, breadcrumb back button, close button, and scrollable panel body.
+    // Dedicated Clock Widget Settings panel showing live preview, clock styles, and location mode.
+    private fun buildClockWidgetSettingsPanel(panel: LinearLayout, onBack: () -> Unit) {
+        PanelSurfaceKit.addSectionHeader(ctx = context, parent = panel, settings = settings, label = "LIVE PREVIEW")
+        val previewWidget = ClockWeatherCardDesign(context, settings).apply {
+            isClickable = false
+        }
+        panel.addView(previewWidget, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8f) })
+
+        PanelSurfaceKit.addSectionHeader(ctx = context, parent = panel, settings = settings, label = "CLOCK STYLE")
+        PanelSurfaceKit.addSegmentedTrack(
+            ctx = context,
+            parent = panel,
+            settings = settings,
+            options = Themes.CLOCK_STYLES.map { it.key to it.label },
+            getSelected = { settings.clockStyle },
+            onSelect = { key ->
+                settings.clockStyle = key
+                previewWidget.refreshStyle()
+                onLiveRefresh()
+            }
+        )
+
+        PanelSurfaceKit.addSectionHeader(ctx = context, parent = panel, settings = settings, label = "LOCATION MODE")
+        PanelSurfaceKit.addSegmentedTrack(
+            ctx = context,
+            parent = panel,
+            settings = settings,
+            options = Themes.LOCATION_MODES.map { it.key to it.label },
+            getSelected = { settings.locationMode },
+            onSelect = { key ->
+                settings.locationMode = key
+                if (key == Themes.LOCATION_MODES.first().key) {
+                    settings.weatherCity = ""
+                    settings.prefs.edit()
+                        .remove(AppSettings.PREF_SAVED_LAT)
+                        .remove(AppSettings.PREF_SAVED_LON)
+                        .remove(AppSettings.PREF_CACHED_CITY)
+                        .apply()
+                }
+                previewWidget.triggerWeatherRefresh(true)
+                onLiveRefresh()
+            }
+        )
+
+        panel.addView(
+            PanelSurfaceKit.makeActionRow(
+                context, settings, "📍", "Choose Manual Location",
+                settings.weatherCity.ifBlank { "Select city with D-Pad or search" }
+            ) {
+                previewWidget.showLocationSelectorDialog()
+            },
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10f) }
+        )
+
+        panel.addView(
+            PanelSurfaceKit.makeActionRow(
+                context, settings, "‹", "Back to Customize", "Return to launcher customization", ""
+            ) {
+                onBack()
+            },
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16f) }
+        )
+    }
+
     private fun setupDrawerSkeleton() {
         drawerLayout.removeAllViews()
         drawerLayout.setPadding(dp(14f), dp(14f), dp(14f), dp(14f))
@@ -302,9 +343,10 @@ class PanelHub(
         }
 
         val headerSpec = panelRegistry.find { it.mode == currentMode } ?: panelRegistry.first()
-        if (headerSpec.parentMode.isNotEmpty()) {
-            val parentSpec = panelRegistry.find { it.mode == headerSpec.parentMode }
-            val parentLabel = parentSpec?.title?.trim() ?: "Back"
+        val isSubPanel = currentMode.startsWith("sub_") || currentMode == MODE_WALLPAPER_EDIT || currentMode == MODE_CLOCK_WIDGET
+        if (isSubPanel) {
+            val parentMode = if (currentMode == MODE_WALLPAPER_EDIT || currentMode == MODE_CLOCK_WIDGET) MODE_CUSTOMIZE else MODE_QUICK
+            val parentLabel = if (currentMode == MODE_WALLPAPER_EDIT || currentMode == MODE_CLOCK_WIDGET) "Customize" else "Quick Settings"
             val backCrumb = TextView(context).apply {
                 text = "‹ $parentLabel"
                 textSize = 11f
@@ -318,7 +360,7 @@ class PanelHub(
                     AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 3f)
                     v.background = PanelSurfaceKit.glassCardBg(context, settings.accentColor, f, settings.tileColor)
                 }
-                setOnClickListener { navigateBackToParent() }
+                setOnClickListener { open(parentMode) }
             }
             topRow.addView(backCrumb, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8f) })
         }
@@ -372,7 +414,6 @@ class PanelHub(
         activeScroll?.addView(activePanel)
     }
 
-    // Clears and renders the panel matching the active mode from panelRegistry.
     private fun populateActivePanel() {
         val panel = activePanel ?: return
         panel.removeAllViews()
@@ -380,7 +421,6 @@ class PanelHub(
         spec.render(panel)
     }
 
-    // Builds circular close button styling for the drawer header.
     private fun closeBtnBg(focused: Boolean) = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
         setColor(if (focused) Color.argb(165, 255, 75, 85) else Color.argb(55, 255, 255, 255))
