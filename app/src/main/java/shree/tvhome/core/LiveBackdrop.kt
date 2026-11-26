@@ -702,6 +702,6 @@ object LiveBackdrop {
             super.onDetachedFromWindow()
             flowAnim?.cancel()
             transitionAnim?.cancel()
-        }
+        })
     }
 }
