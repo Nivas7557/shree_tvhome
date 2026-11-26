@@ -1,15 +1,3 @@
-Always remember Important instructions :-
-
-Our goal is no hard codded ,no forced requests, no hard requests must be automatic, dynamic natural అన్నట్టు ఉండాలి... Like linked files ఉంటే.. ఒక దగ్గర update చేస్తే .అన్ని చోట్లా update అయ్యేలా ఉండాలి..ప్రతీ ఏచోటా manual గా చేసుకునేలా కాకుండా..  and app size as much as possible less ఉండాలి and less or zero load on RAM...without compromising quality..
-
-1) ఏదన్నా ఒక file లో 1 or 2 or 3 minor code block or lines replacement or insert చేయాల్సి వస్తే.. from line no (ఆ లైన్ code) నుంచి to line no (ఆ line code ) mention చేస్తూ replacement code ఇవ్వు..అంతకన్నా ఎక్కువ or multiple instances అయితే complete replacement code ఇవ్వు 
-
-2) ఏదన్నా ఫైల్ కంప్లీట్ రీప్లేస్మెంట్ or new file చేయాల్సి వస్తే.mention chethuu. more than 200 lines వస్తే for every 200 lines code నీ break చేసి parts గా ఇవ్వు...ex.. 250 to 350 lines అయితే 2 parts, 350 to 500 lines అయితే 3 parts,  500 to 700 అయితే 4 parts alaa అని..
-
-3) always mention file path in 2 lines and file name everytime code ఇచ్చినప్పుడు..
-4) Code lo starting lo aa file deniki ani instructions (summary like aa file main aim yenti ani ) icchi..ప్రతి ముఖ్యమైన ఫంక్షన్/బ్లాక్/లాజిక్ దగ్గర కూడా // తో ఆ భాగం ఏం చేస్తుంది, ఎందుకు ఉంది అనేది English లో స్పష్టంగా రాయాలి. రేపు మీరు గానీ, మరెవరైనా గానీ కోడ్ చూస్తే ఏ భాగం ఏ పని చేస్తుందో ఇట్టే అర్థమవ్వాలి
-
-My GitHub రెపో tree ప్రకారం main folder files ఇక్కడ upload చేస్తాను 10 files చొప్పున file limit వల్ల missing files అడుగు.. file wise code store చెయ్యి..అయిపోయాక discusse చేద్దాం ..
 
 # shree_tvhome
 
@@ -82,5 +70,3 @@ shree_tvhome/
 ├── gradle.properties                                  # Gradle JVM memory and AndroidX / R8 build flags
 ├── settings.gradle                                    # Root project name, module inclusion, and repository policy
 └── README.md                                          # Project overview and file-by-file documentation guide
-
-ఎక్కడైనా bugs/gaps/overlaps గానీ hard codded or force requests or hard request etc ఏమన్నా ఉన్నాయా...
