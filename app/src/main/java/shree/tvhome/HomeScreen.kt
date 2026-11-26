@@ -1,11 +1,10 @@
 // Important instructions:
-// - Derive all paddings, gaps, and scroll fade margins dynamically from LayoutMetrics (zero fixed constants).
-// - Lock focused app row to the vertical center of the app drawer and linearly fade rows above/below it.
+// - Compute top padding relative to TopHeaderBar avatar height so the circular profile avatar never crops at the top edge.
+// - Smoothly center-scroll focused app rows without layout jitter and linearly fade rows above/below center.
 
 package shree.tvhome
 
 import android.animation.LayoutTransition
-import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Rect
@@ -45,7 +44,6 @@ class HomeScreen(
     val favCount: TextView
     val appGrid: LinearLayout
     val allCount: TextView
-    private var activeScrollAnimator: ObjectAnimator? = null
 
     init {
         orientation = VERTICAL
@@ -54,10 +52,12 @@ class HomeScreen(
 
         val hPad = LayoutMetrics.screenHorizontalPadding(context)
         val vPad = LayoutMetrics.screenVerticalPadding(context)
-        val sectionGap = LayoutMetrics.dynamicSpace(context, ratio = 0.016f, minDp = 10, maxDp = 22, horizontal = false)
         val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.054f, minDp = 34, maxDp = 48, horizontal = false)
+        // Reserve proportional top clearance for the oversized circular avatar so it never clips at the screen top.
+        val topAvatarClearance = maxOf(vPad, (barHeight * 0.68f).toInt())
+        val sectionGap = LayoutMetrics.dynamicSpace(context, ratio = 0.015f, minDp = 10, maxDp = 20, horizontal = false)
 
-        setPadding(hPad, vPad, hPad, vPad / 2)
+        setPadding(hPad, topAvatarClearance, hPad, vPad / 2)
 
         topBar = TopHeaderBar(context, settings, callbacks)
         addView(topBar, LayoutParams(-1, barHeight).apply { bottomMargin = sectionGap })
@@ -72,15 +72,10 @@ class HomeScreen(
             orientation = VERTICAL
             clipChildren = false
             clipToPadding = false
-            layoutTransition = LayoutTransition().apply {
-                setDuration(280L)
-                enableTransitionType(LayoutTransition.CHANGING)
-                setInterpolator(LayoutTransition.CHANGING, LayoutMetrics.FLUID_SPRING)
-            }
         }
         contentArea.addView(bodyContainer, FrameLayout.LayoutParams(-1, -1))
 
-        // Hidden apps ribbon with proportional padding and bottom spacing.
+        // Hidden apps ribbon with proportional padding and clean spacing.
         val ribbonPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 18, horizontal = true)
         val ribbonPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.010f, minDp = 8, maxDp = 14, horizontal = false)
         hiddenSection = LinearLayout(context).apply {
@@ -136,8 +131,7 @@ class HomeScreen(
         hiddenHScroll.addView(hiddenRow)
         hiddenSection.addView(hiddenHScroll)
         bodyContainer.addView(hiddenSection, LayoutParams(-1, -2).apply { bottomMargin = sectionGap })
-
-        // Favorites horizontal shelf with clean breathing space above and below.
+        // Favorites horizontal shelf with balanced vertical breathing room.
         favSection = LinearLayout(context).apply {
             orientation = VERTICAL
             clipChildren = false
@@ -147,7 +141,7 @@ class HomeScreen(
         favCount = favHeader.findViewWithTag("count_tv")
         favSection.addView(favHeader)
 
-        val shelfPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.008f, minDp = 6, maxDp = 12, horizontal = false)
+        val shelfPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.009f, minDp = 6, maxDp = 12, horizontal = false)
         val favHScroll = HorizontalScrollView(context).apply {
             isFocusable = false
             isHorizontalScrollBarEnabled = false
@@ -164,14 +158,15 @@ class HomeScreen(
         favHScroll.addView(favRow)
         favSection.addView(favHScroll)
         bodyContainer.addView(favSection, LayoutParams(-1, -2).apply { bottomMargin = sectionGap })
-        // All apps header and non-focusable center-locking scroll container with linear row fade-out.
+
+        // All apps header and smooth center-locking scroll viewport with linear row fade-out.
         val allHeader = AppsShelfDesign.createHeader(
             context, "⊞  ALL APPS", isFavoritesRow = false, settings = settings, onSortChanged = onSortChanged
         )
         allCount = allHeader.findViewWithTag("count_tv")
         bodyContainer.addView(allHeader, LayoutParams(-1, -2).apply { bottomMargin = shelfPadV })
 
-        val fadeLength = LayoutMetrics.dynamicSpace(context, ratio = 0.07f, minDp = 36, maxDp = 68, horizontal = false)
+        val fadeLength = LayoutMetrics.dynamicSpace(context, ratio = 0.065f, minDp = 32, maxDp = 60, horizontal = false)
         val scroll = object : ScrollView(context) {
             override fun requestChildRectangleOnScreen(child: View, rectangle: Rect, immediate: Boolean): Boolean {
                 return false
@@ -193,6 +188,8 @@ class HomeScreen(
             orientation = VERTICAL
             clipChildren = false
             clipToPadding = false
+            val edgeBuf = LayoutMetrics.dynamicSpace(context, ratio = 0.04f, minDp = 24, maxDp = 48, horizontal = false)
+            setPadding(0, edgeBuf, 0, edgeBuf * 2)
         }
         appGrid = LinearLayout(context).apply {
             orientation = VERTICAL
@@ -203,18 +200,18 @@ class HomeScreen(
         scroll.addView(scrollContent)
         bodyContainer.addView(scroll, LayoutParams(-1, 0, 1f))
 
-        // Apply linear vertical alpha fade across app rows above and below the viewport center.
+        // Linearly fade rows above and below the vertical center of the app drawer.
         val applyLinearRowFade: () -> Unit = {
             val grid = appGrid.findViewWithTag<SpatialGridDesign>("spatial_engine")
             val vpH = scroll.height.toFloat()
             if (grid != null && vpH > 0f) {
                 val vpCenterY = scroll.scrollY + (vpH / 2f)
-                val maxDist = (vpH * 0.54f).coerceAtLeast(1f)
+                val maxDist = (vpH * 0.56f).coerceAtLeast(1f)
                 for (i in 0 until grid.childCount) {
                     val tile = grid.getChildAt(i)
-                    val tileCenterY = tile.y + (tile.height / 2f)
+                    val tileCenterY = scrollContent.paddingTop + tile.y + (tile.height / 2f)
                     val distRatio = (abs(tileCenterY - vpCenterY) / maxDist).coerceIn(0f, 1f)
-                    tile.alpha = if (tile.hasFocus()) 1f else (1f - (distRatio * 0.68f)).coerceIn(0.32f, 1f)
+                    tile.alpha = if (tile.hasFocus()) 1f else (1f - (distRatio * 0.65f)).coerceIn(0.35f, 1f)
                 }
             }
         }
@@ -224,19 +221,7 @@ class HomeScreen(
             applyLinearRowFade()
         }
 
-        // Update top/bottom padding dynamically to half viewport height so first and last rows can center cleanly.
-        scroll.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
-            val vpH = bottom - top
-            if (vpH > 0) {
-                val halfPad = (vpH * 0.28f).toInt()
-                if (scrollContent.paddingTop != halfPad || scrollContent.paddingBottom != halfPad) {
-                    scrollContent.setPadding(0, halfPad, 0, halfPad)
-                }
-                applyLinearRowFade()
-            }
-        }
-
-        // Smoothly lock the focused app's row to the vertical center of the app drawer.
+        // Smoothly scroll focused app row to the vertical center of the app drawer without layout jitter.
         scroll.viewTreeObserver.addOnGlobalFocusChangeListener(
             ViewTreeObserver.OnGlobalFocusChangeListener { _, newFocus ->
                 if (newFocus == null || scroll.height <= 0) return@OnGlobalFocusChangeListener
@@ -250,14 +235,7 @@ class HomeScreen(
                 val maxScroll = maxOf(0, scrollContent.height - scroll.height)
                 val targetScrollY = (tileCenterY - viewportCenterY).toInt().coerceIn(0, maxScroll)
 
-                if (abs(scroll.scrollY - targetScrollY) > dp(2)) {
-                    activeScrollAnimator?.cancel()
-                    activeScrollAnimator = ObjectAnimator.ofInt(scroll, "scrollY", scroll.scrollY, targetScrollY).apply {
-                        duration = 300L
-                        interpolator = LayoutMetrics.SILKY_EASE
-                        start()
-                    }
-                }
+                scroll.smoothScrollTo(0, targetScrollY)
                 applyLinearRowFade()
             }
         )
@@ -272,7 +250,6 @@ class HomeScreen(
         return false
     }
 
-    // Reserves right-side stage width proportionally so app tiles stay clear of the widget/drawer.
     fun setRightStageInset(rightStageWidthPx: Int) {
         val gap = LayoutMetrics.dynamicSpace(context, ratio = 0.018f, minDp = 12, maxDp = 30, horizontal = true)
         bodyContainer.setPadding(0, 0, rightStageWidthPx + gap, 0)
