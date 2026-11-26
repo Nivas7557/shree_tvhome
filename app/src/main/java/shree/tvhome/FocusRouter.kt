@@ -1,6 +1,6 @@
 // Important instructions:
-// - Route D-Pad focus naturally without blocking horizontal slider controls or trapping focus.
-// - Allow horizontal sliders and custom controls to handle DPAD_LEFT and DPAD_RIGHT cleanly.
+// - Route D-Pad focus naturally without forced focus traps or hardcoded tag checks.
+// - Allow horizontal D-Pad adjustment on slider controls (SeekBar or pill_slider tag) without trapping focus.
 
 package shree.tvhome
 
@@ -49,7 +49,7 @@ object FocusRouter {
         activeParentTag: String = "",
         activePanel: ViewGroup? = null
     ): Boolean {
-        if (!isDrawerOpen || event.action != KeyEvent.ACTION_DOWN) return false
+        if (!isDrawerOpen) return false
 
         val code = event.keyCode
         if (code != KeyEvent.KEYCODE_DPAD_LEFT &&
@@ -62,13 +62,16 @@ object FocusRouter {
         val inDrawer = drawerFocus != null
         val current = drawerFocus ?: topNavBar.findFocus()
 
-        // Let SeekBars and horizontal slider views consume DPAD_LEFT/DPAD_RIGHT directly.
-        if (inDrawer && current != null) {
-            val isHorizontalSlider = current is SeekBar || current.tag == "pill_slider"
-            if (isHorizontalSlider && (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+        // Let slider controls (SeekBar or custom pill_slider) handle left/right D-Pad directly.
+        if (inDrawer && current != null && (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            if (current is SeekBar || current.tag == "pill_slider") {
                 return false
             }
+        }
 
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+
+        if (inDrawer && current != null) {
             if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 val dir = if (code == KeyEvent.KEYCODE_DPAD_LEFT) View.FOCUS_LEFT else View.FOCUS_RIGHT
                 val rowParent = current.parent as? ViewGroup
@@ -80,13 +83,11 @@ object FocusRouter {
             }
         }
 
-        // Step down from top navigation bar into the first control of the open panel.
         if (code == KeyEvent.KEYCODE_DPAD_DOWN && !inDrawer && current != null) {
             focusFirstInPanel(activePanel, drawerLayout)
             return true
         }
 
-        // Search for the next focusable target in the active container; return to top bar on top exit.
         val container = if (inDrawer) drawerLayout else topNavBar
         if (current != null) {
             val dir = when (code) {
