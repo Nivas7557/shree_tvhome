@@ -155,7 +155,7 @@ class HomeScreen(
         val fadeLength = LayoutMetrics.dynamicSpace(context, ratio = 0.055f, minDp = 28, maxDp = 54, horizontal = false)
         val scroll = object : ScrollView(context) {
             // Suppress default abrupt jump-scroll so our silky spring center-scroll controls vertical movement.
-            override fun requestChildRectangleOnScreen(child: View?, rectangle: android.graphics.Rect?, immediate: Boolean): Boolean {
+            override fun requestChildRectangleOnScreen(child: View, rectangle: Rect, immediate: Boolean): Boolean {
                 return false
             }
         }.apply {
