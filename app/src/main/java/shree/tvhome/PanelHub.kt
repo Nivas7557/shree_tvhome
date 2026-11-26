@@ -189,9 +189,12 @@ class PanelHub(
         val minStageW = LayoutMetrics.dp(context, Themes.PANEL_MIN_WIDTH_DP)
         val dynamicDrawerW = maxOf(minStageW, (screenW * (settings.panelWidthPct / 100f)).toInt())
         drawerLayout.layoutParams.width = dynamicDrawerW
-        drawerLayout.clipChildren = true
-        drawerLayout.clipToPadding = true
+        drawerLayout.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        drawerLayout.isFocusable = false
+        drawerLayout.clipChildren = false
+        drawerLayout.clipToPadding = false
         drawerLayout.requestLayout()
+
 
         drawerLayout.background = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
