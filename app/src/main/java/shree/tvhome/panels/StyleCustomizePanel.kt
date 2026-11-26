@@ -1,6 +1,6 @@
 // Important instructions:
-// - Never call requestFocus() or hardcode option lists/column counts; derive all specs from Themes and MoodPresets.
-// - Auto-close inline sub-menus on commit or focus exit, and sync Mood Preset commits across all panels.
+// - Wire generic auto-closing horizontal sub-menus with automatic saved-option focus and Up/Down parent exit.
+// - Never rebuild or clear views on width changes; let weight-based rows reflow smoothly like airflow.
 
 package shree.tvhome.panels
 
@@ -11,8 +11,10 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.text.TextUtils
+import android.view.FocusFinder
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.Window
 import android.view.WindowManager
@@ -37,7 +39,7 @@ object StyleCustomizePanel {
         return false
     }
 
-    // Builds the Customize panel with dynamic column grids, auto-closing sub-menus, and Mood Preset sync.
+    // Builds the Customize panel with generic auto-closing sub-menus, saved-option focus, and Mood Preset sync.
     fun build(
         ctx: Context,
         panel: LinearLayout,
@@ -81,8 +83,8 @@ object StyleCustomizePanel {
             }
         }
 
-        // Toggle inline sub-menu visibility naturally without forced requestFocus() calls.
-        val toggleInlineSubMenu: (LinearLayout, View) -> Unit = { targetBox, triggerView ->
+        // Opens an inline sub-menu, focuses its currently saved option, and wires generic Up/Down parent exit.
+        val openSubMenuWithFocus: (LinearLayout, View, () -> View?) -> Unit = { targetBox, triggerView, findSavedOption ->
             val willOpen = targetBox.visibility != View.VISIBLE
             subMenuContainers.forEach { box -> if (box !== targetBox) collapseSubMenu(box) }
             if (willOpen) {
@@ -92,6 +94,27 @@ object StyleCustomizePanel {
                 targetBox.scaleY = 0.92f
                 targetBox.visibility = View.VISIBLE
                 targetBox.animate().alpha(1f).scaleY(1f).setDuration(220L).setInterpolator(LayoutMetrics.FLUID_SPRING).start()
+
+                InlineStyleSubMenus.registerExitHandler(targetBox) { dir ->
+                    collapseSubMenu(targetBox)
+                    if (dir == View.FOCUS_UP) {
+                        triggerView.requestFocus()
+                        true
+                    } else if (dir == View.FOCUS_DOWN) {
+                        val nextDown = FocusFinder.getInstance().findNextFocus(panel, triggerView, View.FOCUS_DOWN)
+                        if (nextDown != null && nextDown !== triggerView) {
+                            nextDown.requestFocus()
+                            true
+                        } else {
+                            triggerView.requestFocus()
+                            true
+                        }
+                    } else false
+                }
+
+                targetBox.post {
+                    findSavedOption()?.requestFocus()
+                }
             } else {
                 collapseSubMenu(targetBox)
             }
@@ -104,8 +127,7 @@ object StyleCustomizePanel {
             }
         }
         panel.viewTreeObserver.addOnGlobalFocusChangeListener(focusWatcher)
-
-        // 1. User Profile & Studio Shortcuts (adaptive columns derived from Themes.MIN_SUMMARY_CARD_DP).
+        // 1. User Profile & Studio Shortcuts (minimum 2 columns, smooth airflow width scaling).
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "USER PROFILE & STUDIO")
         val hiddenCount = settings.getHiddenApps().size
         val greetSub = settings.greetingPhrase.ifBlank { "Auto Time" }
@@ -147,116 +169,144 @@ object StyleCustomizePanel {
             LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV }
         )
 
-        // 3. Display & Shelf Layout triggers + auto-closing sub-menus.
+        // 3. Display & Shelf Layout triggers + horizontal auto-closing sub-menus.
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "DISPLAY & SHELF LAYOUT")
         val sizeSubMenu = InlineStyleSubMenus.createContainer(ctx, settings).also { subMenuContainers.add(it) }
         val widthSubMenu = InlineStyleSubMenus.createContainer(ctx, settings).also { subMenuContainers.add(it) }
 
         lateinit var sizeCard: LinearLayout
+        lateinit var findSavedSize: () -> View?
         sizeCard = makeExpandableTile(ctx, settings, "📐", "Tile Size", { Themes.getTileSizeSpec(settings.tileSize).label }) {
-            toggleInlineSubMenu(sizeSubMenu, sizeCard)
+            openSubMenuWithFocus(sizeSubMenu, sizeCard, findSavedSize)
         }
         lateinit var widthCard: LinearLayout
+        lateinit var findSavedWidth: () -> View?
         widthCard = makeExpandableTile(ctx, settings, "◫", "Panel Width", { "${settings.panelWidthPct}%" }) {
-            toggleInlineSubMenu(widthSubMenu, widthCard)
+            openSubMenuWithFocus(widthSubMenu, widthCard, findSavedWidth)
         }
         addDynamicRowGrid(panel, listOf(sizeCard, widthCard), summaryCols, tileH, gapH, gapV)
 
-        InlineStyleSubMenus.populateOptionChips(
+        findSavedSize = InlineStyleSubMenus.populateOptionChips(
             ctx, sizeSubMenu, settings, Themes.TILE_SIZES.map { it.key to it.label },
-            optH = optH, gapH = gapH, gapV = gapV,
+            optH = optH, gapH = gapH,
             getCommitted = { savedTileSize }, getCurrent = { settings.tileSize },
             onPreview = { settings.tileSize = it; onLiveRefresh() },
-            onCommit = { savedTileSize = it; settings.tileSize = it; onLiveRefresh(); collapseSubMenu(sizeSubMenu) }
+            onCommit = { savedTileSize = it; settings.tileSize = it; onLiveRefresh(); collapseSubMenu(sizeSubMenu); sizeCard.requestFocus() }
         )
         panel.addView(sizeSubMenu, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
 
-        InlineStyleSubMenus.populateOptionChips(
+        findSavedWidth = InlineStyleSubMenus.populateOptionChips(
             ctx, widthSubMenu, settings, Themes.PANEL_WIDTH_OPTIONS.map { it.toString() to "$it%" },
-            optH = optH, gapH = gapH, gapV = gapV,
+            optH = optH, gapH = gapH,
             getCommitted = { savedPanelWidth.toString() }, getCurrent = { settings.panelWidthPct.toString() },
             onPreview = { settings.panelWidthPct = it.toIntOrNull() ?: savedPanelWidth; onLiveRefresh() },
             onCommit = {
                 val v = it.toIntOrNull() ?: savedPanelWidth
                 savedPanelWidth = v; settings.panelWidthPct = v; onLiveRefresh()
-                collapseSubMenu(widthSubMenu)
+                collapseSubMenu(widthSubMenu); widthCard.requestFocus()
             }
         )
         panel.addView(widthSubMenu, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
 
-        // 4. Tile Shape & Nameplates triggers + auto-closing sub-menus driven by Themes.
+        // 4. Tile Shape & Nameplates triggers + horizontal auto-closing sub-menus.
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "TILE SHAPE & NAMEPLATES")
         val shapeSubMenu = InlineStyleSubMenus.createContainer(ctx, settings).also { subMenuContainers.add(it) }
         val nameplateSubMenu = InlineStyleSubMenus.createContainer(ctx, settings).also { subMenuContainers.add(it) }
 
         lateinit var shapeCard: LinearLayout
+        lateinit var findSavedShape: () -> View?
         shapeCard = makeExpandableTile(
             ctx, settings, "❖", "Silhouette",
             { Themes.TILE_SHAPES.find { it.key == settings.tileShape }?.label ?: Themes.TILE_SHAPES.first().label }
-        ) { toggleInlineSubMenu(shapeSubMenu, shapeCard) }
+        ) { openSubMenuWithFocus(shapeSubMenu, shapeCard, findSavedShape) }
 
-                lateinit var nameplateCard: LinearLayout
+        lateinit var nameplateCard: LinearLayout
+        lateinit var findSavedNameplate: () -> View?
         nameplateCard = makeExpandableTile(
             ctx, settings, "🏷", "Nameplates",
             { Themes.NAMEPLATE_MODES.find { it.key == settings.nameplateMode }?.label ?: Themes.NAMEPLATE_MODES.first().label }
-        ) { toggleInlineSubMenu(nameplateSubMenu, nameplateCard) }
+        ) { openSubMenuWithFocus(nameplateSubMenu, nameplateCard, findSavedNameplate) }
+
         addDynamicRowGrid(panel, listOf(shapeCard, nameplateCard), summaryCols, tileH, gapH, gapV)
-        InlineStyleSubMenus.populateOptionChips(
+
+        findSavedShape = InlineStyleSubMenus.populateOptionChips(
             ctx, shapeSubMenu, settings, Themes.TILE_SHAPES.map { it.key to it.label },
-            optH = optH, gapH = gapH, gapV = gapV,
+            optH = optH, gapH = gapH,
             getCommitted = { savedTileShape }, getCurrent = { settings.tileShape },
             onPreview = { settings.tileShape = it; onLiveRefresh() },
-            onCommit = { savedTileShape = it; settings.tileShape = it; onLiveRefresh(); collapseSubMenu(shapeSubMenu) }
+            onCommit = { savedTileShape = it; settings.tileShape = it; onLiveRefresh(); collapseSubMenu(shapeSubMenu); shapeCard.requestFocus() }
         )
         panel.addView(shapeSubMenu, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
-        InlineStyleSubMenus.populateOptionChips(
+
+        findSavedNameplate = InlineStyleSubMenus.populateOptionChips(
             ctx, nameplateSubMenu, settings, Themes.NAMEPLATE_MODES.map { it.key to it.label },
-            optH = optH, gapH = gapH, gapV = gapV,
+            optH = optH, gapH = gapH,
             getCommitted = { savedNameplate }, getCurrent = { settings.nameplateMode },
             onPreview = { settings.nameplateMode = it; onLiveRefresh() },
-            onCommit = { savedNameplate = it; settings.nameplateMode = it; onLiveRefresh(); collapseSubMenu(nameplateSubMenu) }
+            onCommit = { savedNameplate = it; settings.nameplateMode = it; onLiveRefresh(); collapseSubMenu(nameplateSubMenu); nameplateCard.requestFocus() }
         )
         panel.addView(nameplateSubMenu, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
-        // 5. Accent Aura, Motion Style & Glass Palette sub-menus.
+        // 5. Accent Aura, Motion Style & Glass Palette horizontal sub-menus.
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "ACCENT, MOTION & PALETTE")
         val accentSubMenu = InlineStyleSubMenus.createContainer(ctx, settings).also { subMenuContainers.add(it) }
         val motionSubMenu = InlineStyleSubMenus.createContainer(ctx, settings).also { subMenuContainers.add(it) }
         val paletteSubMenu = InlineStyleSubMenus.createContainer(ctx, settings).also { subMenuContainers.add(it) }
+
         lateinit var accentCard: LinearLayout
+        lateinit var findSavedAccent: () -> View?
         accentCard = makeExpandableTile(ctx, settings, "🌈", "Accent Aura", { settings.accentName }) {
-            toggleInlineSubMenu(accentSubMenu, accentCard)
+            openSubMenuWithFocus(accentSubMenu, accentCard, findSavedAccent)
         }
         lateinit var motionCard: LinearLayout
+        lateinit var findSavedMotion: () -> View?
         motionCard = makeExpandableTile(ctx, settings, "✨", "Motion Style", { AnimationController.getSpec(settings.motionStyle).label }) {
-            toggleInlineSubMenu(motionSubMenu, motionCard)
+            openSubMenuWithFocus(motionSubMenu, motionCard, findSavedMotion)
         }
         lateinit var paletteCard: LinearLayout
+        lateinit var findSavedPalette: () -> View?
         paletteCard = makeExpandableTile(ctx, settings, "🎨", "Glass Palette", { Themes.getTheme(settings.tileColor).name }) {
-            toggleInlineSubMenu(paletteSubMenu, paletteCard)
+            openSubMenuWithFocus(paletteSubMenu, paletteCard, findSavedPalette)
         }
+
         addDynamicRowGrid(panel, listOf(accentCard, motionCard, paletteCard), summaryCols, tileH, gapH, gapV)
-        val syncSwatches = InlineStyleSubMenus.populateAccentSwatches(
-            ctx, accentSubMenu, settings, optH, gapH, gapV,
+
+        val (syncSwatches, accentLookup) = InlineStyleSubMenus.populateAccentSwatches(
+            ctx, accentSubMenu, settings, optH, gapH,
             getCommittedColor = { savedAccent }, getCommittedName = { savedAccentName },
-            onCommit = { col, lbl -> savedAccent = col; savedAccentName = lbl; collapseSubMenu(accentSubMenu) }
+            onCommit = { col, lbl ->
+                savedAccent = col; savedAccentName = lbl
+                collapseSubMenu(accentSubMenu); accentCard.requestFocus()
+            }
         )
+        findSavedAccent = accentLookup
         panel.addView(accentSubMenu, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
+
         val hostDrawer = (panel.parent?.parent as? View) ?: panel
-        val syncMotion = InlineStyleSubMenus.populateMotionOptions(
-            ctx, motionSubMenu, hostDrawer, settings, optH, gapH, gapV,
+        val (syncMotion, motionLookup) = InlineStyleSubMenus.populateMotionOptions(
+            ctx, motionSubMenu, hostDrawer, settings, optH, gapH,
             getCommittedMotion = { savedMotion },
-            onCommit = { key -> savedMotion = key; collapseSubMenu(motionSubMenu) }
+            onCommit = { key ->
+                savedMotion = key
+                collapseSubMenu(motionSubMenu); motionCard.requestFocus()
+            }
         )
+        findSavedMotion = motionLookup
         panel.addView(motionSubMenu, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
-        val syncOrbs = InlineStyleSubMenus.populatePaletteOrbs(
-            ctx, paletteSubMenu, settings, optH, gapH, gapV,
+
+        val (syncOrbs, paletteLookup) = InlineStyleSubMenus.populatePaletteOrbs(
+            ctx, paletteSubMenu, settings, optH, gapH,
             getCommittedTheme = { savedTheme },
-            onCommit = { key -> savedTheme = key; collapseSubMenu(paletteSubMenu) }
+            onCommit = { key ->
+                savedTheme = key
+                collapseSubMenu(paletteSubMenu); paletteCard.requestFocus()
+            }
         )
+        findSavedPalette = paletteLookup
         panel.addView(paletteSubMenu, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV * 2 })
+
         val unifiedStyleListener: () -> Unit = { syncMotion(); syncSwatches(); syncOrbs() }
         settings.addStyleListener(unifiedStyleListener)
-        // Clean up listeners and revert unconfirmed focus previews when panel detaches.
+
         panel.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {}
             override fun onViewDetachedFromWindow(v: View) {
@@ -274,7 +324,7 @@ object StyleCustomizePanel {
             }
         })
     }
-    // Lays out trigger cards in adaptive rows computed from side panel width.
+
     private fun addDynamicRowGrid(parent: LinearLayout, items: List<View>, cols: Int, itemH: Int, gapH: Int, gapV: Int) {
         items.chunked(cols.coerceAtLeast(1)).forEach { rowItems ->
             val row = LinearLayout(parent.context).apply {
@@ -290,7 +340,7 @@ object StyleCustomizePanel {
             parent.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
         }
     }
-    // Creates a summary trigger card that expands an inline sub-menu on click.
+
     private fun makeExpandableTile(
         ctx: Context, settings: AppSettings, icon: String, title: String, getSub: () -> String, onToggle: () -> Unit
     ) = LinearLayout(ctx).apply {
@@ -322,7 +372,7 @@ object StyleCustomizePanel {
         setOnClickListener { onToggle(); syncVisuals() }
         addView(leftCol, LinearLayout.LayoutParams(0, -2, 1f)); addView(arrowTv)
     }
-    // Creates a direct-action studio card for profile, hidden apps, greeting, and wallpaper.
+
     private fun makeActionTile(
         ctx: Context, settings: AppSettings, icon: String, title: String, sub: String, onClick: (View) -> Unit
     ) = LinearLayout(ctx).apply {
@@ -349,39 +399,86 @@ object StyleCustomizePanel {
         setOnClickListener { v -> onClick(v) }
         addView(titleTv); addView(subTv)
     }
-    // Opens the custom greeting phrase dialog with auto-reset and save options.
     private fun showGreetingDialog(ctx: Context, settings: AppSettings, onLiveRefresh: () -> Unit, onRefreshPanel: () -> Unit) {
         val dialog = Dialog(ctx).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
         val padH = LayoutMetrics.dynamicSpace(ctx, 0.022f, 16, 28, true)
         val padV = LayoutMetrics.dynamicSpace(ctx, 0.024f, 14, 24, false)
         val box = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(padH, padV, padH, padV)
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.rgb(20, 32, 62), Color.rgb(12, 18, 38))).apply {
-                cornerRadius = LayoutMetrics.dpF(ctx, 20f); setStroke(LayoutMetrics.dp(ctx, 1), Color.argb(120, 255, 255, 255))
+            orientation = LinearLayout.VERTICAL
+            setPadding(padH, padV, padH, padV)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(20, 32, 62), Color.rgb(12, 18, 38))
+            ).apply {
+                cornerRadius = LayoutMetrics.dpF(ctx, 20f)
+                setStroke(LayoutMetrics.dp(ctx, 1), Color.argb(120, 255, 255, 255))
             }
         }
-        box.addView(TextView(ctx).apply { text = "Custom Greeting Phrase"; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding(0, 0, 0, padV / 2) })
+        box.addView(TextView(ctx).apply {
+            text = "Custom Greeting Phrase"
+            textSize = 15f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            setPadding(0, 0, 0, padV / 2)
+        })
         val input = EditText(ctx).apply {
-            isSingleLine = true; hint = "Custom phrase"; setText(settings.greetingPhrase)
-            setTextColor(Color.WHITE); setHintTextColor(Color.argb(150, 200, 220, 245)); setPadding(padH / 2, padV / 2, padH / 2, padV / 2)
+            isSingleLine = true
+            hint = "Custom phrase"
+            setText(settings.greetingPhrase)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.argb(150, 200, 220, 245))
+            setPadding(padH / 2, padV / 2, padH / 2, padV / 2)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
-            background = GradientDrawable().apply { setColor(Color.argb(55, 255, 255, 255)); cornerRadius = LayoutMetrics.dpF(ctx, 12f); setStroke(LayoutMetrics.dp(ctx, 1), settings.accentColor) }
+            background = GradientDrawable().apply {
+                setColor(Color.argb(55, 255, 255, 255))
+                cornerRadius = LayoutMetrics.dpF(ctx, 12f)
+                setStroke(LayoutMetrics.dp(ctx, 1), settings.accentColor)
+            }
         }
         box.addView(input, LinearLayout.LayoutParams(LayoutMetrics.dynamicSpace(ctx, 0.32f, 240, 420, true), -2))
         val btnH = LayoutMetrics.dynamicSpace(ctx, 0.056f, 36, 48, false)
         val btnRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        btnRow.addView(makeDialogBtn(ctx, settings, "↺ Auto", false) { settings.greetingPhrase = ""; onLiveRefresh(); onRefreshPanel(); dialog.dismiss() }, LinearLayout.LayoutParams(0, btnH, 1f).apply { rightMargin = padH / 3 })
-        btnRow.addView(makeDialogBtn(ctx, settings, "✓ Save", true) { settings.greetingPhrase = input.text.toString().trim(); onLiveRefresh(); onRefreshPanel(); dialog.dismiss() }, LinearLayout.LayoutParams(0, btnH, 1f))
+        btnRow.addView(
+            makeDialogBtn(ctx, settings, "↺ Auto", false) {
+                settings.greetingPhrase = ""
+                onLiveRefresh()
+                onRefreshPanel()
+                dialog.dismiss()
+            },
+            LinearLayout.LayoutParams(0, btnH, 1f).apply { rightMargin = padH / 3 }
+        )
+        btnRow.addView(
+            makeDialogBtn(ctx, settings, "✓ Save", true) {
+                settings.greetingPhrase = input.text.toString().trim()
+                onLiveRefresh()
+                onRefreshPanel()
+                dialog.dismiss()
+            },
+            LinearLayout.LayoutParams(0, btnH, 1f)
+        )
         box.addView(btnRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = padV / 2 })
         dialog.setContentView(box)
-        dialog.window?.apply { setBackgroundDrawableResource(android.R.color.transparent); clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM); setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE) }
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        }
         dialog.show()
     }
-    // Builds a styled focusable dialog action button.
+
     private fun makeDialogBtn(ctx: Context, settings: AppSettings, label: String, highlight: Boolean, onClick: () -> Unit) = TextView(ctx).apply {
-        text = label; textSize = 10.5f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); gravity = Gravity.CENTER; isFocusable = true; isClickable = true
+        text = label
+        textSize = 10.5f
+        typeface = Typeface.DEFAULT_BOLD
+        setTextColor(Color.WHITE)
+        gravity = Gravity.CENTER
+        isFocusable = true
+        isClickable = true
         background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, highlight, settings.tileColor)
-        setOnFocusChangeListener { v, f -> AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 4f); v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, f || highlight, settings.tileColor) }
+        setOnFocusChangeListener { v, f ->
+            AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 4f)
+            v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, f || highlight, settings.tileColor)
+        }
         setOnClickListener { onClick() }
     }
 }
