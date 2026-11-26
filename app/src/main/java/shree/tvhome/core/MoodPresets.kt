@@ -46,7 +46,7 @@ object MoodPresets {
         val panelPx = maxOf(LayoutMetrics.dp(ctx, Themes.PANEL_MIN_WIDTH_DP), (screenW * (panelWidthPct / 100f)).toInt())
         val usablePx = (panelPx * 0.88f).toInt()
         val minItemPx = LayoutMetrics.dp(ctx, minCardWidthDp).coerceAtLeast(1)
-        return (usablePx / minItemPx).coerceIn(1, maxCols)
+        return (usablePx / minItemPx).coerceIn(minOf(2, maxCols), maxCols)
     }
 
     // Builds an adaptive grid of preset cards and notifies onPresetCommitted when user clicks a preset.
