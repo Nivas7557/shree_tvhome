@@ -367,8 +367,7 @@ class HomeScreen(
     }
 
     fun isHiddenRibbonVisible(): Boolean = hiddenSection.visibility == View.VISIBLE
-
-    fun openHiddenRibbon(onUnhideApp: (String, String) -> Unit) {
+        
     // Populates and animates open the hidden apps ribbon.
     fun openHiddenRibbon(onUnhideApp: (String, String) -> Unit) {
         AppsShelfDesign.populateHiddenRibbon(context, settings, hiddenSection, hiddenRow, hiddenCount, onUnhideApp)
