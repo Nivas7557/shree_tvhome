@@ -337,9 +337,9 @@ object AppsShelfDesign {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isDrawerOpen) {
             val targetView = if (shouldRequestFocus && restorePkg != null) {
                 favRow.findViewWithTag<View>("fav_$restorePkg")
-                    ?: spatialGrid.findViewWithTag<View>("all_$restorePkg")
+                    ?: conveyor.findViewWithTag<View>("all_$restorePkg")
             } else null
-            val defaultTile = targetView ?: favRow.getChildAt(0) ?: spatialGrid.getChildAt(0)
+            val defaultTile = targetView ?: favRow.getChildAt(0) ?: conveyor.getActiveItemView() ?: conveyor.getChildAt(0)
             defaultTile?.isFocusedByDefault = true
         }
     }
