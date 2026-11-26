@@ -623,6 +623,8 @@ class ClockWeatherCardDesign(
         pendingSearchRunnable = null
         activeDialog?.dismiss()
         activeDialog = null
+        // Shut down background network executor on detach to keep RAM and thread count at zero.
+        bgExecutor.shutdownNow()
     }
 
     // Data-driven clock face renderer driven purely by Themes.ClockStyleSpec properties.
