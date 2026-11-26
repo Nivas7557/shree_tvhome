@@ -191,10 +191,9 @@ class PanelHub(
         drawerLayout.layoutParams.width = dynamicDrawerW
         drawerLayout.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         drawerLayout.isFocusable = false
-        drawerLayout.clipChildren = false
-        drawerLayout.clipToPadding = false
+        drawerLayout.clipChildren = true
+        drawerLayout.clipToPadding = true
         drawerLayout.requestLayout()
-
 
         drawerLayout.background = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
