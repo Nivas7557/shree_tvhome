@@ -1,6 +1,6 @@
 // Important instructions:
 // - Act as the single source of truth for palettes, accents, tile options, clock styles, and location modes.
-// - Adding or editing clock styles or location modes here updates customization panels and widgets automatically.
+// - Define clock style rules/ratios here so ClockWeatherCardDesign renders any added/edited/removed style without hardcoding.
 
 package shree.tvhome.core
 
@@ -35,6 +35,24 @@ object Themes {
     data class OptionSpec(
         val key: String,
         val label: String
+    )
+
+    // Data-driven specification for each clock style so renderer logic never hardcodes style names.
+    data class ClockStyleSpec(
+        val key: String,
+        val label: String,
+        val showDialFace: Boolean = true,
+        val showBezelRing: Boolean = true,
+        val showTicks: Boolean = false,
+        val showNumerals: Boolean = false,
+        val showProgressArcs: Boolean = false,
+        val dashedOuterRing: Boolean = false,
+        val showDigitalReadout: Boolean = false,
+        val showHands: Boolean = true,
+        val outerRingRatio: Float = 0.88f,
+        val innerRingRatio: Float = 0.62f,
+        val handScaleRatio: Float = 1.0f,
+        val cornerRadiusRatio: Float = 0.35f
     )
 
     // Glass surface palettes shared across tiles, panels, and stage surfaces.
@@ -122,12 +140,66 @@ object Themes {
         OptionSpec("classic", "■ Classic")
     )
 
-    // Clock widget visual styles referenced directly by customization and weather stage.
+    // Single source of truth for clock widget styles; add/remove/edit entries here to sync everywhere.
     val CLOCK_STYLES = listOf(
-        OptionSpec("classic", "Classic"),
-        OptionSpec("chrono", "Chrono"),
-        OptionSpec("minimal", "Orbit"),
-        OptionSpec("digital", "Digital")
+        ClockStyleSpec(
+            key = "classic",
+            label = "Classic",
+            showDialFace = true,
+            showBezelRing = true,
+            showTicks = true,
+            showNumerals = true,
+            showProgressArcs = false,
+            dashedOuterRing = false,
+            showDigitalReadout = false,
+            showHands = true,
+            outerRingRatio = 0.88f,
+            innerRingRatio = 0.67f,
+            handScaleRatio = 1.0f
+        ),
+        ClockStyleSpec(
+            key = "chrono",
+            label = "Chrono",
+            showDialFace = true,
+            showBezelRing = false,
+            showTicks = false,
+            showNumerals = false,
+            showProgressArcs = true,
+            dashedOuterRing = false,
+            showDigitalReadout = false,
+            showHands = true,
+            outerRingRatio = 0.90f,
+            innerRingRatio = 0.74f,
+            handScaleRatio = 0.92f
+        ),
+        ClockStyleSpec(
+            key = "minimal",
+            label = "Orbit",
+            showDialFace = false,
+            showBezelRing = false,
+            showTicks = false,
+            showNumerals = false,
+            showProgressArcs = false,
+            dashedOuterRing = true,
+            showDigitalReadout = false,
+            showHands = true,
+            outerRingRatio = 0.88f,
+            innerRingRatio = 0.62f,
+            handScaleRatio = 1.0f
+        ),
+        ClockStyleSpec(
+            key = "digital",
+            label = "Digital",
+            showDialFace = true,
+            showBezelRing = true,
+            showTicks = false,
+            showNumerals = false,
+            showProgressArcs = false,
+            dashedOuterRing = false,
+            showDigitalReadout = true,
+            showHands = false,
+            cornerRadiusRatio = 0.35f
+        )
     )
 
     // Weather location resolution modes ("auto" vs "manual").
@@ -144,9 +216,13 @@ object Themes {
     private val themeMap by lazy { THEMES.associateBy { it.key } }
     private val sizeMap by lazy { TILE_SIZES.associateBy { it.key } }
     private val accentMap by lazy { ACCENTS.associateBy { it.key.lowercase() } }
+    private val clockStyleMap by lazy { CLOCK_STYLES.associateBy { it.key } }
 
     // Looks up a theme specification by key, falling back to the default theme.
     fun getTheme(key: String?): ThemeSpec = themeMap[key] ?: THEMES.first()
+
+    // Looks up a clock style specification by key, falling back to the first style in CLOCK_STYLES.
+    fun getClockStyle(key: String?): ClockStyleSpec = clockStyleMap[key] ?: CLOCK_STYLES.first()
 
     // Calculates mean relative luminance across a gradient color array.
     private fun computeAverageLuminance(colors: IntArray): Float {
