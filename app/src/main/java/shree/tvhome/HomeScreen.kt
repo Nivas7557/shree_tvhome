@@ -51,7 +51,8 @@ class HomeScreen(
         val vPad = LayoutMetrics.screenVerticalPadding(context)
         val bottomPad = maxOf(dp(10), vPad / 2)
         val headerGap = maxOf(dp(12), vPad / 2)
-        val barHeight = maxOf(dp(38), (context.resources.displayMetrics.heightPixels * 0.055f).toInt())
+        // Derive top header bar height consistently via LayoutMetrics.dynamicSpace across all TV resolutions.
+        val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.054f, minDp = 34, maxDp = 48, horizontal = false)
 
         setPadding(hPad, vPad, hPad, bottomPad)
 
