@@ -1,6 +1,6 @@
 // Important instructions:
-// - Act as the universal panel controller (CPU) coordinating all panels, theme updates, and animations.
-// - Drive panel routing and styling from a single registry so updates propagate automatically.
+// - Coordinate drawer panels and live visual updates without forcing focus traps or focus jumps.
+// - Derive drawer margins and paddings proportionally from LayoutMetrics.
 
 package shree.tvhome
 
@@ -8,7 +8,6 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -22,6 +21,7 @@ import shree.tvhome.core.Themes
 import shree.tvhome.design.AppsShelfDesign
 import shree.tvhome.panels.AlertsPowerPanel
 import shree.tvhome.panels.AvatarEditorPanel
+import shree.tvhome.panels.ClockWidgetPanel
 import shree.tvhome.panels.PanelSurfaceKit
 import shree.tvhome.panels.PictureAudioPanel
 import shree.tvhome.panels.QuickControlsPanel
@@ -49,11 +49,15 @@ class PanelHub(
         const val MODE_ALERTS = "alerts"
         const val MODE_POWER = "power"
         const val MODE_WALLPAPER_EDIT = "wp_edit"
+        const val MODE_CLOCK_WIDGET = "clock_widget_settings"
         const val MODE_SUB_INPUTS = "sub_inputs"
         const val MODE_SUB_PICTURE = "sub_picture"
         const val MODE_SUB_SOUND = "sub_sound"
         const val MODE_SUB_BLUETOOTH = "sub_bluetooth"
         const val MODE_SUB_STORAGE = "sub_storage"
+
+        const val TAG_WALLPAPER_TRIGGER = "customize_wallpaper_btn"
+        const val TAG_CLOCK_TRIGGER = "customize_clock_btn"
     }
 
     private data class PanelSpec(
@@ -64,7 +68,8 @@ class PanelHub(
         val render: (LinearLayout) -> Unit
     )
 
-    // Single registry mapping every panel mode to its header metadata, parent nav tag, and builder.
+    private var returnFocusTagInDrawer: String? = null
+
     private val panelRegistry: List<PanelSpec> by lazy {
         listOf(
             PanelSpec(MODE_QUICK, "⚙  ", "Quick Settings", "nav_quick") { panel ->
@@ -74,10 +79,22 @@ class PanelHub(
                 StyleCustomizePanel.build(
                     context, panel, settings, onLiveRefresh, { populateActivePanel() },
                     ::showProfileEditDialog,
-                    { open(MODE_WALLPAPER_EDIT) },
-                    onOpenHiddenRibbon,
-                    ::close
+                    onOpenWallpaper = { triggerTag ->
+                        returnFocusTagInDrawer = triggerTag
+                        open(MODE_WALLPAPER_EDIT)
+                    },
+                    onOpenHidden = onOpenHiddenRibbon,
+                    onOpenClockSettings = {
+                        returnFocusTagInDrawer = TAG_CLOCK_TRIGGER
+                        open(MODE_CLOCK_WIDGET)
+                    },
+                    onCloseDrawer = ::close
                 )
+            },
+            PanelSpec(MODE_CLOCK_WIDGET, "🕰️  ", "Clock Widget Settings", "nav_customize") { panel ->
+                ClockWidgetPanel.build(context, panel, settings, onLiveRefresh) {
+                    open(MODE_CUSTOMIZE)
+                }
             },
             PanelSpec(MODE_WIFI, "📶  ", "Network & Internet", "nav_wifi") { panel ->
                 WifiPanel.build(context, panel, settings)
@@ -96,7 +113,9 @@ class PanelHub(
                 )
             },
             PanelSpec(MODE_WALLPAPER_EDIT, "🖼  ", "Wallpaper Studio", "nav_customize") { panel ->
-                WallpaperPanel.build(context, panel, settings, onWallpaperRefresh, onPickWallpaper) { open(MODE_CUSTOMIZE) }
+                WallpaperPanel.build(context, panel, settings, onWallpaperRefresh, onPickWallpaper) {
+                    open(MODE_CUSTOMIZE)
+                }
             },
             PanelSpec(MODE_SUB_INPUTS, "📺  ", "TV Inputs & HDMI", "nav_quick") { panel ->
                 PictureAudioPanel.buildInputsSubPanel(context, panel, settings) { open(MODE_QUICK) }
@@ -123,7 +142,6 @@ class PanelHub(
     private var activePanel: LinearLayout? = null
     private var stageWidget: View? = null
 
-    // Automatically updates the open drawer glass surface when accent or palette settings change.
     init {
         settings.addStyleListener {
             if (isOpen) {
@@ -132,53 +150,47 @@ class PanelHub(
                     Themes.getGlassPanelColors(settings.tileColor, settings.accentColor, elevated = true)
                 ).apply {
                     cornerRadius = LayoutMetrics.dpF(context, 24f)
-                    setStroke(dp(1.5f), LayoutMetrics.withAlpha(settings.accentColor, 185))
+                    setStroke(LayoutMetrics.dp(context, 2), LayoutMetrics.withAlpha(settings.accentColor, 185))
                 }
             }
         }
     }
 
-    // Attaches the ambient clock/weather widget so panel open/close transitions coordinate with it.
     fun attachStageWidget(widget: View) {
         stageWidget = widget
     }
 
-    // Returns the active panel container for D-Pad focus routing.
     fun getActivePanelView(): ViewGroup? = activePanel
 
-    // Returns the top navigation button tag associated with the active panel.
     fun getParentNavTag(): String =
         panelRegistry.find { it.mode == currentMode }?.navTag ?: panelRegistry.first().navTag
 
-    // Toggles a panel open or closed when its trigger is activated again.
     fun toggle(mode: String) {
         if (isOpen && mode == currentMode) close() else open(mode)
     }
 
-    // Blocks or restores focusability on sibling containers while the side drawer is open.
-    private fun setBackgroundSiblingsFocusable(enabled: Boolean) {
-        val parent = drawerLayout.parent as? ViewGroup ?: return
-        val focusability = if (enabled) ViewGroup.FOCUS_AFTER_DESCENDANTS else ViewGroup.FOCUS_BLOCK_DESCENDANTS
-        for (i in 0 until parent.childCount) {
-            val child = parent.getChildAt(i)
-            if (child !== drawerLayout && child !== scrim) {
-                (child as? ViewGroup)?.descendantFocusability = focusability
-            }
+    private fun setBodyFocusable(enabled: Boolean) {
+        val body = (mainPage as? HomeScreen)?.bodyContainer ?: return
+        body.descendantFocusability = if (enabled) {
+            ViewGroup.FOCUS_AFTER_DESCENDANTS
+        } else {
+            ViewGroup.FOCUS_BLOCK_DESCENDANTS
         }
     }
 
-    // Opens the requested panel mode, applies theme surface, populates content, and runs motion.
     fun open(mode: String) {
         val wasOpen = isOpen
         currentMode = mode
         isOpen = true
 
-        setBackgroundSiblingsFocusable(false)
+        setBodyFocusable(false)
 
         val screenW = context.resources.displayMetrics.widthPixels
         val minStageW = LayoutMetrics.dp(context, Themes.PANEL_MIN_WIDTH_DP)
         val dynamicDrawerW = maxOf(minStageW, (screenW * (settings.panelWidthPct / 100f)).toInt())
         drawerLayout.layoutParams.width = dynamicDrawerW
+        drawerLayout.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        drawerLayout.isFocusable = false
         drawerLayout.clipChildren = true
         drawerLayout.clipToPadding = true
         drawerLayout.requestLayout()
@@ -188,7 +200,7 @@ class PanelHub(
             Themes.getGlassPanelColors(settings.tileColor, settings.accentColor, elevated = true)
         ).apply {
             cornerRadius = LayoutMetrics.dpF(context, 24f)
-            setStroke(dp(1.5f), LayoutMetrics.withAlpha(settings.accentColor, 165))
+            setStroke(LayoutMetrics.dp(context, 2), LayoutMetrics.withAlpha(settings.accentColor, 165))
         }
         drawerLayout.outlineProvider = null
 
@@ -199,12 +211,6 @@ class PanelHub(
         setupDrawerSkeleton()
         populateActivePanel()
 
-        FocusRouter.findFirstFocusable(activePanel ?: drawerLayout)?.let { firstView ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                firstView.isFocusedByDefault = true
-            }
-        }
-
         if (!wasOpen) {
             AnimationController.resetTransform(drawerLayout)
             AnimationController.animatePanelEnter(drawerLayout, stageWidget, dynamicDrawerW, settings.motionStyle) {}
@@ -213,25 +219,24 @@ class PanelHub(
         }
     }
 
-    // Closes the active panel drawer, restores background focus, and returns focus to the header trigger.
     fun close() {
         if (!isOpen) return
         val returnTag = getParentNavTag()
         isOpen = false
         currentMode = ""
-        val out = maxOf(dp(340f), drawerLayout.width + dp(30f))
+        returnFocusTagInDrawer = null
+        val out = maxOf(LayoutMetrics.dp(context, 340), drawerLayout.width + LayoutMetrics.dp(context, 30))
 
-        setBackgroundSiblingsFocusable(true)
+        setBodyFocusable(true)
 
         AnimationController.animatePanelExit(drawerLayout, stageWidget, out, settings.motionStyle) {
             scrim.visibility = View.GONE
             drawerLayout.visibility = View.GONE
-            mainPage.findViewWithTag<View>(returnTag)?.requestFocus()
+            mainPage.findViewWithTag<View>(returnTag)
         }
         drawerLayout.post { onLiveRefresh() }
     }
 
-    // Opens the profile and avatar editor dialog and refreshes visuals upon saving.
     fun showProfileEditDialog() {
         AvatarEditorPanel.show(context, settings, onPickProfilePic) {
             onLiveRefresh()
@@ -239,24 +244,27 @@ class PanelHub(
         }
     }
 
-    // Builds the common header, breadcrumb back button, close button, and scrollable panel body.
     private fun setupDrawerSkeleton() {
+        val padH = LayoutMetrics.dynamicSpace(context, ratio = 0.014f, minDp = 10, maxDp = 20, horizontal = true)
+        val padV = LayoutMetrics.dynamicSpace(context, ratio = 0.016f, minDp = 10, maxDp = 20, horizontal = false)
+        val closeSize = LayoutMetrics.dynamicSpace(context, ratio = 0.032f, minDp = 24, maxDp = 34, horizontal = false)
+
         drawerLayout.removeAllViews()
-        drawerLayout.setPadding(dp(14f), dp(14f), dp(14f), dp(14f))
+        drawerLayout.setPadding(padH, padV, padH, padV)
 
         val topRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             clipChildren = false
             clipToPadding = false
-            setPadding(dp(6f), dp(4f), dp(6f), dp(10f))
+            setPadding(padH / 2, padV / 3, padH / 2, padV / 2)
         }
 
         val headerSpec = panelRegistry.find { it.mode == currentMode } ?: panelRegistry.first()
-        val isSubPanel = currentMode.startsWith("sub_") || currentMode == MODE_WALLPAPER_EDIT
+        val isSubPanel = currentMode.startsWith("sub_") || currentMode == MODE_WALLPAPER_EDIT || currentMode == MODE_CLOCK_WIDGET
         if (isSubPanel) {
-            val parentMode = if (currentMode == MODE_WALLPAPER_EDIT) MODE_CUSTOMIZE else MODE_QUICK
-            val parentLabel = if (currentMode == MODE_WALLPAPER_EDIT) "Customize" else "Quick Settings"
+            val parentMode = if (currentMode == MODE_WALLPAPER_EDIT || currentMode == MODE_CLOCK_WIDGET) MODE_CUSTOMIZE else MODE_QUICK
+            val parentLabel = if (currentMode == MODE_WALLPAPER_EDIT || currentMode == MODE_CLOCK_WIDGET) "Customize" else "Quick Settings"
             val backCrumb = TextView(context).apply {
                 text = "‹ $parentLabel"
                 textSize = 11f
@@ -264,7 +272,7 @@ class PanelHub(
                 setTextColor(settings.accentColor)
                 isFocusable = true
                 isClickable = true
-                setPadding(dp(6f), dp(3f), dp(8f), dp(3f))
+                setPadding(padH / 2, padV / 4, padH / 2, padV / 4)
                 background = PanelSurfaceKit.glassCardBg(context, settings.accentColor, false, settings.tileColor)
                 setOnFocusChangeListener { v, f ->
                     AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 3f)
@@ -272,7 +280,7 @@ class PanelHub(
                 }
                 setOnClickListener { open(parentMode) }
             }
-            topRow.addView(backCrumb, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8f) })
+            topRow.addView(backCrumb, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = padH / 2 })
         }
 
         topRow.addView(TextView(context).apply {
@@ -298,33 +306,31 @@ class PanelHub(
             }
             setOnClickListener { close() }
         }
-        topRow.addView(closeX, LinearLayout.LayoutParams(dp(28f), dp(28f)))
+        topRow.addView(closeX, LinearLayout.LayoutParams(closeSize, closeSize))
         drawerLayout.addView(topRow)
 
         drawerLayout.addView(
             View(context).apply { setBackgroundColor(Color.argb(60, 255, 255, 255)) },
-            LinearLayout.LayoutParams(-1, dp(1f)).apply { bottomMargin = dp(8f) }
+            LinearLayout.LayoutParams(-1, LayoutMetrics.dp(context, 1)).apply { bottomMargin = padV / 2 }
         )
 
         activeScroll = ScrollView(context).apply {
             isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
+            overScrollMode = ScrollView.OVER_SCROLL_NEVER
             isFillViewport = true
             clipChildren = true
             clipToPadding = true
-            setPadding(0, dp(2f), 0, dp(2f))
         }
         activePanel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             clipChildren = true
             clipToPadding = true
-            setPadding(dp(6f), dp(6f), dp(6f), dp(20f))
+            setPadding(padH / 2, padV / 2, padH / 2, padV)
         }
         drawerLayout.addView(activeScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         activeScroll?.addView(activePanel)
     }
 
-    // Clears and renders the panel matching the active mode from panelRegistry.
     private fun populateActivePanel() {
         val panel = activePanel ?: return
         panel.removeAllViews()
@@ -332,12 +338,9 @@ class PanelHub(
         spec.render(panel)
     }
 
-    // Builds circular close button styling for the drawer header.
     private fun closeBtnBg(focused: Boolean) = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
         setColor(if (focused) Color.argb(165, 255, 75, 85) else Color.argb(55, 255, 255, 255))
-        setStroke(dp(1f), if (focused) Color.WHITE else Color.argb(85, 255, 255, 255))
+        setStroke(LayoutMetrics.dp(context, 1), if (focused) Color.WHITE else Color.argb(85, 255, 255, 255))
     }
-
-    private fun dp(v: Float): Int = LayoutMetrics.dpF(context, v).toInt()
 }

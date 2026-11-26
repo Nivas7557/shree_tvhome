@@ -1,6 +1,6 @@
 // Important instructions:
-// - Decode gallery bitmaps with sampling to avoid out-of-memory errors on low-RAM devices.
-// - Persist profile name, zoom, and pan offsets cleanly to AppSettings.
+// - Decode gallery bitmaps with sampling and recycle temporary bitmaps on dismiss to stay lightweight.
+// - Derive dimensions and spacing from LayoutMetrics without hardcoded values or forced focus calls.
 
 package shree.tvhome.panels
 
@@ -32,7 +32,7 @@ object AvatarEditorPanel {
 
     private data class CropBtnSpec(val label: String, val weight: Float, val onClick: () -> Unit)
 
-    // Shows the circular avatar cropper and profile name editor dialog.
+    // Opens the profile name and circular avatar framing editor dialog.
     fun show(
         ctx: Context,
         settings: AppSettings,
@@ -47,24 +47,31 @@ object AvatarEditorPanel {
         var panY = settings.profilePicPanY
         var rawBitmap: Bitmap? = loadUserBitmap(ctx, settings.profilePicUri)
 
+        val padH = LayoutMetrics.dynamicSpace(ctx, ratio = 0.022f, minDp = 16, maxDp = 28, horizontal = true)
+        val padV = LayoutMetrics.dynamicSpace(ctx, ratio = 0.024f, minDp = 14, maxDp = 24, horizontal = false)
+        val gapH = LayoutMetrics.dynamicSpace(ctx, ratio = 0.008f, minDp = 6, maxDp = 12, horizontal = true)
+        val gapV = LayoutMetrics.dynamicSpace(ctx, ratio = 0.01f, minDp = 6, maxDp = 14, horizontal = false)
+        val previewSize = LayoutMetrics.dynamicSpace(ctx, ratio = 0.2f, minDp = 120, maxDp = 180, horizontal = false)
+        val inputW = LayoutMetrics.dynamicSpace(ctx, ratio = 0.28f, minDp = 210, maxDp = 340, horizontal = true)
+
         val rootGlass = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(ctx, 24), dp(ctx, 20), dp(ctx, 24), dp(ctx, 20))
+            setPadding(padH, padV, padH, padV)
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(Color.argb(242, 24, 36, 78), Color.argb(248, 12, 18, 44))
             ).apply {
                 cornerRadius = LayoutMetrics.dpF(ctx, 24f)
-                setStroke(dp(ctx, 1), Color.argb(140, 255, 255, 255))
+                setStroke(LayoutMetrics.dp(ctx, 1), Color.argb(140, 255, 255, 255))
             }
         }
 
         rootGlass.addView(TextView(ctx).apply {
             text = "✦  Profile & Avatar Studio"
-            textSize = 16f
+            textSize = 15.5f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
-            setPadding(0, 0, 0, dp(ctx, 14))
+            setPadding(0, 0, 0, gapV)
         })
 
         val contentRow = LinearLayout(ctx).apply {
@@ -72,14 +79,13 @@ object AvatarEditorPanel {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        val previewSize = dp(ctx, 150)
+        // Circular avatar crop canvas with center crosshairs and fallback initial.
         val cropPreview = object : View(ctx) {
             private val circlePath = Path()
             private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
             private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
                 color = Color.argb(70, 255, 255, 255)
-                strokeWidth = 1.5f
             }
             private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
             private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -89,11 +95,11 @@ object AvatarEditorPanel {
             }
             private val drawMatrix = Matrix()
 
-            // Draws the circular cropped avatar preview or fallback initial inside the ring.
             override fun onDraw(canvas: Canvas) {
                 val cx = width / 2f
                 val cy = height / 2f
-                val r = minOf(cx, cy) - dp(ctx, 4)
+                val r = minOf(cx, cy) - LayoutMetrics.dpF(context, 4f)
+                if (r <= 0f) return
 
                 circlePath.reset()
                 circlePath.addCircle(cx, cy, r, Path.Direction.CW)
@@ -102,7 +108,7 @@ object AvatarEditorPanel {
                 canvas.clipPath(circlePath)
 
                 val bmp = rawBitmap
-                if (bmp != null) {
+                if (bmp != null && !bmp.isRecycled) {
                     val baseScale = maxOf((r * 2f) / bmp.width, (r * 2f) / bmp.height)
                     val finalScale = baseScale * zoom
                     drawMatrix.reset()
@@ -111,49 +117,51 @@ object AvatarEditorPanel {
                     drawMatrix.postTranslate(cx + (panX * r), cy + (panY * r))
                     canvas.drawBitmap(bmp, drawMatrix, fillPaint)
 
+                    gridPaint.strokeWidth = LayoutMetrics.dpF(context, 1f)
                     canvas.drawLine(cx - r, cy, cx + r, cy, gridPaint)
                     canvas.drawLine(cx, cy - r, cx, cy + r, gridPaint)
                 } else {
                     fillPaint.color = settings.accentColor
                     canvas.drawCircle(cx, cy, r, fillPaint)
                     textPaint.textSize = r * 0.65f
-                    val initial = settings.userName.ifBlank { "T" }.trim().first().uppercaseChar().toString()
+                    val initial = settings.userName.ifBlank { "A" }.trim().first().uppercaseChar().toString()
                     val ty = cy - ((textPaint.descent() + textPaint.ascent()) / 2f)
                     canvas.drawText(initial, cx, ty, textPaint)
                 }
                 canvas.restore()
 
-                rimPaint.strokeWidth = LayoutMetrics.dpF(ctx, 2.5f)
+                rimPaint.strokeWidth = LayoutMetrics.dpF(context, 2.5f)
                 rimPaint.color = settings.accentColor
                 canvas.drawCircle(cx, cy, r, rimPaint)
             }
         }
         contentRow.addView(cropPreview, LinearLayout.LayoutParams(previewSize, previewSize).apply {
-            rightMargin = dp(ctx, 20)
+            rightMargin = padH
         })
 
         val rightCol = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
 
         val nameInput = EditText(ctx).apply {
             isSingleLine = true
-            hint = "Enter Profile Name"
+            hint = "Profile Name"
             setText(settings.userName)
             setTextColor(Color.WHITE)
             setHintTextColor(Color.argb(150, 200, 220, 245))
-            setPadding(dp(ctx, 12), dp(ctx, 9), dp(ctx, 12), dp(ctx, 9))
+            setPadding(gapH, gapV, gapH, gapV)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
             background = GradientDrawable().apply {
                 setColor(Color.argb(55, 255, 255, 255))
                 cornerRadius = LayoutMetrics.dpF(ctx, 12f)
-                setStroke(dp(ctx, 1), settings.accentColor)
+                setStroke(LayoutMetrics.dp(ctx, 1), settings.accentColor)
             }
         }
-        rightCol.addView(nameInput, LinearLayout.LayoutParams(dp(ctx, 260), -2))
+        rightCol.addView(nameInput, LinearLayout.LayoutParams(inputW, -2))
 
         val controlRows = listOf(
             listOf(
                 CropBtnSpec("🖼  Choose Photo", 1.4f) { dialog.dismiss(); onPickPhoto() },
                 CropBtnSpec("✕ Remove", 1f) {
+                    rawBitmap?.let { if (!it.isRecycled) it.recycle() }
                     rawBitmap = null
                     zoom = 1.0f
                     panX = 0f
@@ -187,11 +195,11 @@ object AvatarEditorPanel {
                 row.addView(
                     makeGlossBtn(ctx, settings, spec.label, rIdx == 0 && cIdx == 0, spec.onClick),
                     LinearLayout.LayoutParams(0, -2, spec.weight).apply {
-                        if (cIdx < specs.lastIndex) rightMargin = dp(ctx, if (rIdx == 2) 4 else 6)
+                        if (cIdx < specs.lastIndex) rightMargin = gapH
                     }
                 )
             }
-            rightCol.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(ctx, if (rIdx == 0) 10 else 8) })
+            rightCol.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = gapV })
         }
 
         contentRow.addView(rightCol)
@@ -200,7 +208,7 @@ object AvatarEditorPanel {
         val actionRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         actionRow.addView(
             makeGlossBtn(ctx, settings, "Cancel", false) { dialog.dismiss() },
-            LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(ctx, 8) }
+            LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = gapH }
         )
 
         actionRow.addView(
@@ -215,13 +223,19 @@ object AvatarEditorPanel {
             },
             LinearLayout.LayoutParams(0, -2, 1.3f)
         )
-        rootGlass.addView(actionRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(ctx, 16) })
+        rootGlass.addView(actionRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = padV })
+
+        dialog.setOnDismissListener {
+            rawBitmap?.let { if (!it.isRecycled) it.recycle() }
+            rawBitmap = null
+        }
 
         dialog.setContentView(rootGlass)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.show()
     }
 
+    // Loads a sub-sampled bitmap from URI to prevent large allocations on low-RAM TVs.
     private fun loadUserBitmap(ctx: Context, uriStr: String?): Bitmap? {
         if (uriStr.isNullOrEmpty()) return null
         return try {
@@ -241,23 +255,14 @@ object AvatarEditorPanel {
             gravity = Gravity.CENTER
             isFocusable = true
             isClickable = true
-            setPadding(dp(ctx, 8), dp(ctx, 8), dp(ctx, 8), dp(ctx, 8))
-            background = btnBg(ctx, settings.accentColor, highlight)
+            val padH = LayoutMetrics.dynamicSpace(ctx, ratio = 0.008f, minDp = 6, maxDp = 12, horizontal = true)
+            val padV = LayoutMetrics.dynamicSpace(ctx, ratio = 0.008f, minDp = 6, maxDp = 12, horizontal = false)
+            setPadding(padH, padV, padH, padV)
+            background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, highlight, settings.tileColor)
             setOnFocusChangeListener { v, f ->
                 AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 4f)
-                v.background = btnBg(ctx, settings.accentColor, f || highlight)
+                v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, f || highlight, settings.tileColor)
             }
             setOnClickListener { onClick() }
         }
-
-    private fun btnBg(ctx: Context, accent: Int, active: Boolean) = GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        if (active) intArrayOf(LayoutMetrics.withAlpha(accent, 185), LayoutMetrics.withAlpha(accent, 110))
-        else intArrayOf(Color.argb(65, 255, 255, 255), Color.argb(30, 255, 255, 255))
-    ).apply {
-        cornerRadius = LayoutMetrics.dpF(ctx, 12f)
-        setStroke(dp(ctx, 1), if (active) Color.WHITE else Color.argb(80, 255, 255, 255))
-    }
-
-    private fun dp(ctx: Context, v: Int): Int = LayoutMetrics.dp(ctx, v)
 }

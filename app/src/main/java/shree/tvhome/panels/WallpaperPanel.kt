@@ -1,6 +1,6 @@
 // Important instructions:
 // - Read smart modes and live scenes directly from LiveBackdrop (single source of truth).
-// - Support custom gallery image picking, weather aura toggle, scaling, zoom, and pan offsets.
+// - Support focus live preview with click-to-commit and dynamic spacing without hardcoded paddings or requestFocus().
 
 package shree.tvhome.panels
 
@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import shree.tvhome.core.AnimationController
@@ -18,7 +19,7 @@ import shree.tvhome.core.LiveBackdrop
 
 object WallpaperPanel {
 
-    // Builds wallpaper presets, live canvas scenes, and custom photo controls.
+    // Builds smart modes, live scenes, custom gallery photo options, and zoom/pan pills.
     fun build(
         ctx: Context,
         panel: LinearLayout,
@@ -29,7 +30,16 @@ object WallpaperPanel {
     ) {
         panel.clipChildren = false
         panel.clipToPadding = false
-        val hasCustomImage = settings.prefs.getString(AppSettings.PREF_WALLPAPER, null) != null
+
+        val gapH = LayoutMetrics.dynamicSpace(ctx, ratio = 0.008f, minDp = 4, maxDp = 12, horizontal = true)
+        val gapV = LayoutMetrics.dynamicSpace(ctx, ratio = 0.008f, minDp = 4, maxDp = 10, horizontal = false)
+        val smartCardH = LayoutMetrics.dynamicSpace(ctx, ratio = 0.072f, minDp = 46, maxDp = 62, horizontal = false)
+        val sceneCardH = LayoutMetrics.dynamicSpace(ctx, ratio = 0.066f, minDp = 42, maxDp = 58, horizontal = false)
+        val pillH = LayoutMetrics.dynamicSpace(ctx, ratio = 0.052f, minDp = 32, maxDp = 44, horizontal = false)
+
+        val savedWallpaper = settings.prefs.getString(AppSettings.PREF_WALLPAPER, null)
+        val savedMode = settings.liveWallpaperMode
+        val hasCustomImage = savedWallpaper != null
         val curMode = settings.liveWallpaperMode
 
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "SMART DYNAMIC MODES")
@@ -44,19 +54,31 @@ object WallpaperPanel {
                     makeVisualCard(
                         ctx, settings, spec.icon, spec.name, spec.subtitle,
                         spec.swatch,
-                        !hasCustomImage && curMode == spec.key
+                        !hasCustomImage && curMode == spec.key,
+                        onFocusPreview = {
+                            settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
+                            settings.liveWallpaperMode = spec.key
+                            onLiveUpdate()
+                        },
+                        onBlurRevert = {
+                            if (savedWallpaper != null) {
+                                settings.prefs.edit().putString(AppSettings.PREF_WALLPAPER, savedWallpaper).apply()
+                            }
+                            settings.liveWallpaperMode = savedMode
+                            onLiveUpdate()
+                        }
                     ) {
                         settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
                         settings.liveWallpaperMode = spec.key
                         onLiveUpdate()
                         rebuild(ctx, panel, settings, onLiveUpdate, onPickNewImage, onDone)
                     },
-                    LinearLayout.LayoutParams(0, dp(ctx, 54), 1f).apply {
-                        if (idx < modePair.lastIndex) rightMargin = dp(ctx, 7)
+                    LinearLayout.LayoutParams(0, smartCardH, 1f).apply {
+                        if (idx < modePair.lastIndex) rightMargin = gapH
                     }
                 )
             }
-            panel.addView(autoRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 8) })
+            panel.addView(autoRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
         }
 
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "LIVE CANVAS SCENES")
@@ -70,38 +92,50 @@ object WallpaperPanel {
                 val sel = !hasCustomImage && curMode == spec.key
                 val card = makeVisualCard(
                     ctx, settings, spec.icon, spec.name,
-                    if (sel) "Active" else "Tap to set", spec.swatch, sel
+                    spec.particleKind, spec.swatch, sel,
+                    onFocusPreview = {
+                        settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
+                        settings.liveWallpaperMode = spec.key
+                        onLiveUpdate()
+                    },
+                    onBlurRevert = {
+                        if (savedWallpaper != null) {
+                            settings.prefs.edit().putString(AppSettings.PREF_WALLPAPER, savedWallpaper).apply()
+                        }
+                        settings.liveWallpaperMode = savedMode
+                        onLiveUpdate()
+                    }
                 ) {
                     settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
                     settings.liveWallpaperMode = spec.key
                     onLiveUpdate()
                     rebuild(ctx, panel, settings, onLiveUpdate, onPickNewImage, onDone)
                 }
-                val p = LinearLayout.LayoutParams(0, dp(ctx, 50), 1f).apply {
-                    if (idx < scenePair.lastIndex) rightMargin = dp(ctx, 7)
+                val p = LinearLayout.LayoutParams(0, sceneCardH, 1f).apply {
+                    if (idx < scenePair.lastIndex) rightMargin = gapH
                 }
                 row.addView(card, p)
             }
-            panel.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 7) })
+            panel.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
         }
 
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "CUSTOM GALLERY PHOTO")
         val pickCard = makeVisualCard(
-            ctx, settings, "🖼", "Choose Photo from Storage",
-            if (hasCustomImage) "Custom photo active • Tap to change" else "Select 4K / HD image",
+            ctx, settings, "🖼", "Choose Photo",
+            settings.wpScaleMode,
             intArrayOf(Color.argb(85, 255, 255, 255), Color.argb(38, 255, 255, 255)),
             hasCustomImage
         ) {
             onPickNewImage()
         }
-        panel.addView(pickCard, LinearLayout.LayoutParams(-1, dp(ctx, 50)).apply { bottomMargin = dp(ctx, 8) })
+        panel.addView(pickCard, LinearLayout.LayoutParams(-1, sceneCardH).apply { bottomMargin = gapV })
 
         if (hasCustomImage) {
             val auraOn = settings.photoWeatherAura
             val auraCard = makeVisualCard(
                 ctx, settings, if (auraOn) "🌦️" else "🚫",
-                "Subtle Corner Weather Aura",
-                if (auraOn) "Enabled • Soft edge glow (Tap to Off)" else "Disabled • Pure photo (Tap to On)",
+                "Weather Aura",
+                settings.cachedWeatherCode.toString(),
                 intArrayOf(Color.argb(80, 68, 165, 235), Color.argb(40, 32, 52, 95)),
                 auraOn
             ) {
@@ -109,16 +143,16 @@ object WallpaperPanel {
                 onLiveUpdate()
                 rebuild(ctx, panel, settings, onLiveUpdate, onPickNewImage, onDone)
             }
-            panel.addView(auraCard, LinearLayout.LayoutParams(-1, dp(ctx, 50)).apply { bottomMargin = dp(ctx, 8) })
+            panel.addView(auraCard, LinearLayout.LayoutParams(-1, sceneCardH).apply { bottomMargin = gapV })
 
             PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "PHOTO FIT & ZOOM")
             val curScaleMode = settings.wpScaleMode
-            addPillRow(ctx, panel, settings, listOf("Fit Screen", "Fill Screen"), listOf(curScaleMode == "fit", curScaleMode == "width")) { idx ->
+            addPillRow(ctx, panel, settings, pillH, gapH, listOf("Fit", "Fill"), listOf(curScaleMode == "fit", curScaleMode == "width")) { idx ->
                 settings.wpScaleMode = if (idx == 0) "fit" else "width"
                 onLiveUpdate()
                 rebuild(ctx, panel, settings, onLiveUpdate, onPickNewImage, onDone)
             }
-            addPillRow(ctx, panel, settings, listOf("Zoom -", "Reset", "Zoom +"), listOf(false, false, false)) { idx ->
+            addPillRow(ctx, panel, settings, pillH, gapH, listOf("Zoom -", "Reset", "Zoom +"), listOf(false, false, false)) { idx ->
                 var z = settings.wpZoom
                 z = when (idx) {
                     0 -> maxOf(1.0f, z - 0.1f)
@@ -128,10 +162,10 @@ object WallpaperPanel {
                 settings.wpZoom = z
                 onLiveUpdate()
             }
-            addPillRow(ctx, panel, settings, listOf("⬅", "⬆", "⬇", "➡"), listOf(false, false, false, false)) { idx ->
+            addPillRow(ctx, panel, settings, pillH, gapH, listOf("⬅", "⬆", "⬇", "➡"), listOf(false, false, false, false)) { idx ->
                 var ox = settings.wpOffsetX
                 var oy = settings.wpOffsetY
-                val step = dp(ctx, 24)
+                val step = LayoutMetrics.dynamicSpace(ctx, ratio = 0.02f, minDp = 16, maxDp = 32, horizontal = true)
                 when (idx) {
                     0 -> ox -= step
                     1 -> oy -= step
@@ -151,6 +185,7 @@ object WallpaperPanel {
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             isFocusable = true
+            isClickable = true
             background = pillBg(ctx, false, true, settings.accentColor)
             setOnFocusChangeListener { v, f ->
                 AnimationController.animateFocus(v, f, settings.motionStyle, 1.02f, 3f)
@@ -158,9 +193,26 @@ object WallpaperPanel {
             }
             setOnClickListener { onDone() }
         }
-        panel.addView(donePill, LinearLayout.LayoutParams(-1, dp(ctx, 42)).apply {
-            topMargin = dp(ctx, 10)
-            bottomMargin = dp(ctx, 36)
+        panel.addView(donePill, LinearLayout.LayoutParams(-1, pillH).apply {
+            topMargin = gapV
+            bottomMargin = gapV * 3
+        })
+
+        // Revert any unconfirmed focus preview when leaving the panel.
+        panel.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                val nowWp = settings.prefs.getString(AppSettings.PREF_WALLPAPER, null)
+                if (nowWp != savedWallpaper || settings.liveWallpaperMode != savedMode) {
+                    if (savedWallpaper != null) {
+                        settings.prefs.edit().putString(AppSettings.PREF_WALLPAPER, savedWallpaper).apply()
+                    } else {
+                        settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
+                    }
+                    settings.liveWallpaperMode = savedMode
+                    onLiveUpdate()
+                }
+            }
         })
     }
 
@@ -184,20 +236,30 @@ object WallpaperPanel {
         sub: String,
         gradColors: IntArray,
         selected: Boolean,
+        onFocusPreview: (() -> Unit)? = null,
+        onBlurRevert: (() -> Unit)? = null,
         onClick: () -> Unit
     ) = LinearLayout(ctx).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(ctx, 10), dp(ctx, 6), dp(ctx, 10), dp(ctx, 6))
+        val padH = LayoutMetrics.dynamicSpace(ctx, ratio = 0.009f, minDp = 8, maxDp = 14, horizontal = true)
+        val padV = LayoutMetrics.dynamicSpace(ctx, ratio = 0.008f, minDp = 5, maxDp = 10, horizontal = false)
+        setPadding(padH, padV, padH, padV)
         isFocusable = true
+        isClickable = true
         background = cardBg(ctx, false, selected, gradColors, settings.accentColor)
         setOnFocusChangeListener { v, f ->
             AnimationController.animateFocus(v, f, settings.motionStyle, 1.02f, 4f)
+            if (f) onFocusPreview?.invoke() else onBlurRevert?.invoke()
             v.background = cardBg(ctx, f, selected, gradColors, settings.accentColor)
         }
         setOnClickListener { onClick() }
 
-        addView(TextView(ctx).apply { text = icon; textSize = 15f; setPadding(0, 0, dp(ctx, 8), 0) })
+        addView(TextView(ctx).apply {
+            text = icon
+            textSize = 14.5f
+            setPadding(0, 0, padH / 2, 0)
+        })
         val mid = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         mid.addView(TextView(ctx).apply {
             text = title
@@ -225,10 +287,13 @@ object WallpaperPanel {
         ctx: Context,
         panel: LinearLayout,
         settings: AppSettings,
+        pillH: Int,
+        gapH: Int,
         labels: List<String>,
         selectedFlags: List<Boolean>,
         onClick: (Int) -> Unit
     ) {
+        val gapV = LayoutMetrics.dynamicSpace(ctx, ratio = 0.008f, minDp = 4, maxDp = 10, horizontal = false)
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             clipChildren = false
@@ -243,6 +308,7 @@ object WallpaperPanel {
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
                 isFocusable = true
+                isClickable = true
                 background = pillBg(ctx, false, sel, settings.accentColor)
                 setOnFocusChangeListener { v, f ->
                     AnimationController.animateFocus(v, f, settings.motionStyle, 1.03f, 3f)
@@ -250,11 +316,11 @@ object WallpaperPanel {
                 }
                 setOnClickListener { onClick(i) }
             }
-            row.addView(pill, LinearLayout.LayoutParams(0, dp(ctx, 36), 1f).apply {
-                if (i < labels.lastIndex) rightMargin = dp(ctx, 6)
+            row.addView(pill, LinearLayout.LayoutParams(0, pillH, 1f).apply {
+                if (i < labels.lastIndex) rightMargin = gapH
             })
         }
-        panel.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 7) })
+        panel.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
     }
 
     private fun cardBg(ctx: Context, focused: Boolean, selected: Boolean, colors: IntArray, accent: Int) = GradientDrawable(
@@ -262,7 +328,7 @@ object WallpaperPanel {
     ).apply {
         cornerRadius = LayoutMetrics.dpF(ctx, 14f)
         setStroke(
-            dp(ctx, if (focused || selected) 2 else 1),
+            LayoutMetrics.dp(ctx, if (focused || selected) 2 else 1),
             when {
                 focused -> Color.WHITE
                 selected -> accent
@@ -280,8 +346,6 @@ object WallpaperPanel {
             }
         )
         cornerRadius = LayoutMetrics.dpF(ctx, 12f)
-        setStroke(dp(ctx, if (focused || selected) 2 else 1), if (focused) Color.WHITE else accent)
+        setStroke(LayoutMetrics.dp(ctx, if (focused || selected) 2 else 1), if (focused) Color.WHITE else accent)
     }
-
-    private fun dp(ctx: Context, v: Int): Int = LayoutMetrics.dp(ctx, v)
 }

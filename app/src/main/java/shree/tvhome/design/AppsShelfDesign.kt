@@ -1,5 +1,5 @@
 // Important instructions:
-// - Keep app shelf layout dynamic with zero favorite badges or hardcoded package exclusions.
+// - Keep app shelf layout dynamic with zero favorite badges, zero forced requestFocus(), and single-source geometry math.
 // - Cache installed app lists and labels cleanly, and release resources via clearCache().
 
 package shree.tvhome.design
@@ -25,16 +25,48 @@ import java.util.Locale
 
 object AppsShelfDesign {
 
+    private data class ShelfGeometry(
+        val colCount: Int,
+        val gap: Int,
+        val cellW: Int,
+        val tileW: Int,
+        val tileH: Int,
+        val sideMargin: Int
+    )
+
     private var cachedApps: List<ResolveInfo>? = null
     private var lastAppSignature = ""
     private var lastFavSignature = ""
 
-    // Clears cached package lists, labels, and rendered icon/color caches.
+    // Clears cached package lists, labels, and rendered icon/color caches to keep RAM clean.
     fun clearCache() {
         cachedApps = null
         lastAppSignature = ""
         lastFavSignature = ""
         AppTileDesign.clearAssetCache()
+    }
+
+    // Computes responsive shelf column count, tile dimensions, and margins dynamically from display metrics.
+    private fun computeShelfGeometry(ctx: Context, settings: AppSettings): ShelfGeometry {
+        val sizeSpec = Themes.getTileSizeSpec(settings.tileSize)
+        val screenW = ctx.resources.displayMetrics.widthPixels
+        val sidePad = (screenW * 0.035f).toInt()
+        val gap = maxOf(dp(ctx, 8), (screenW * 0.009f).toInt())
+        val minStageW = dp(ctx, Themes.PANEL_MIN_WIDTH_DP)
+        val rightStageW = maxOf(minStageW, (screenW * (settings.panelWidthPct / 100f)).toInt())
+        val availableW = maxOf(dp(ctx, 200), screenW - sidePad - rightStageW - dp(ctx, 6))
+
+        val desiredTilePx = dp(ctx, sizeSpec.desiredGridDp)
+        val colRange = Themes.GRID_COL_RANGE
+        val colCount = ((availableW + gap) / (desiredTilePx + gap)).coerceIn(colRange.first, colRange.last)
+        val cellW = maxOf(1, (availableW - (gap * (colCount - 1))) / colCount)
+        val tileW = maxOf(1, (cellW * 0.94f).toInt())
+        val extraNameplateH = dp(ctx, 24)
+        // Use 16:10 TV banner card proportion so app tiles look like authentic Android TV cards.
+        val tileH = maxOf(1, (tileW * 0.62f).toInt() + extraNameplateH)
+        val sideMargin = maxOf(0, (cellW - tileW) / 2)
+
+        return ShelfGeometry(colCount, gap, cellW, tileW, tileH, sideMargin)
     }
 
     // Builds a shelf header row with optional A-Z/Z-A sort toggle and live app count badge.
@@ -123,19 +155,11 @@ object AppsShelfDesign {
         hiddenSection.visibility = View.VISIBLE
         hiddenCount.text = "${hiddenApps.size} Hidden • Select for Options"
 
+        val geom = computeShelfGeometry(ctx, settings)
         val sizeSpec = Themes.getTileSizeSpec(settings.tileSize)
-        val screenW = ctx.resources.displayMetrics.widthPixels
-        val sidePad = (screenW * 0.035f).toInt()
-        val gap = maxOf(dp(ctx, 8), (screenW * 0.009f).toInt())
-        val minStageW = dp(ctx, Themes.PANEL_MIN_WIDTH_DP)
-        val rightStageW = maxOf(minStageW, (screenW * (settings.panelWidthPct / 100f)).toInt())
-        val baseAvailableW = maxOf(dp(ctx, 200), screenW - sidePad - rightStageW - dp(ctx, 6))
-        val desiredTilePx = dp(ctx, sizeSpec.desiredGridDp)
-        val colCount = ((baseAvailableW + gap) / (desiredTilePx + gap)).coerceIn(Themes.GRID_COL_RANGE)
-        val baseCellW = maxOf(1, (baseAvailableW - (gap * (colCount - 1))) / colCount)
-        val tileW = (baseCellW * sizeSpec.hiddenScale).toInt()
+        val tileW = (geom.cellW * sizeSpec.hiddenScale).toInt()
         val tileH = (tileW * 0.85f).toInt()
-        val sideMargin = maxOf(0, (baseCellW - tileW) / 2)
+        val sideMargin = maxOf(0, (geom.cellW - tileW) / 2)
 
         hiddenRow.setPadding(sideMargin, 0, sideMargin, 0)
         hiddenRow.removeAllViews()
@@ -188,13 +212,12 @@ object AppsShelfDesign {
                 }
             }
             val p = LinearLayout.LayoutParams(tileW, tileH).apply {
-                if (idx < hiddenApps.lastIndex) rightMargin = gap
+                if (idx < hiddenApps.lastIndex) rightMargin = geom.gap
             }
             hiddenRow.addView(tile, p)
         }
     }
-
-    // Populates favorites and main grid tiles dynamically based on available width and tile size.
+        // Populates favorites and main grid tiles dynamically without forcing focus traps.
     fun populate(
         ctx: Context,
         settings: AppSettings,
@@ -219,22 +242,7 @@ object AppsShelfDesign {
             visibleApps.sortedBy { AppTileDesign.getCachedLabel(pm, it).lowercase(Locale.ROOT) }
         }
 
-        val sizeSpec = Themes.getTileSizeSpec(settings.tileSize)
-        val screenW = ctx.resources.displayMetrics.widthPixels
-        val sidePad = (screenW * 0.035f).toInt()
-        val gap = maxOf(dp(ctx, 8), (screenW * 0.009f).toInt())
-        val minStageW = dp(ctx, Themes.PANEL_MIN_WIDTH_DP)
-        val rightStageW = maxOf(minStageW, (screenW * (settings.panelWidthPct / 100f)).toInt())
-        val currentAvailableW = maxOf(dp(ctx, 200), screenW - sidePad - rightStageW - dp(ctx, 6))
-
-        val desiredTilePx = dp(ctx, sizeSpec.desiredGridDp)
-        val colRange = Themes.GRID_COL_RANGE
-        val targetCols = ((currentAvailableW + gap) / (desiredTilePx + gap)).coerceIn(colRange.first, colRange.last)
-        val cellW = maxOf(1, (currentAvailableW - (gap * (targetCols - 1))) / targetCols)
-        val tileW = maxOf(1, (cellW * 0.94f).toInt())
-        val extraNameplateH = LayoutMetrics.dp(ctx, 28)
-        val tileH = maxOf(1, (tileW * 0.86f).toInt() + extraNameplateH)
-        val sideMargin = maxOf(0, (cellW - tileW) / 2)
+        val geom = computeShelfGeometry(ctx, settings)
 
         // Update or rebuild the horizontal favorites shelf.
         val currentFavSig = favApps.joinToString { it.activityInfo.packageName }
@@ -244,7 +252,7 @@ object AppsShelfDesign {
         } else {
             favSection.visibility = View.VISIBLE
             favCount.text = "${favApps.size} Apps"
-            favRow.setPadding(sideMargin, 0, sideMargin, 0)
+            favRow.setPadding(geom.sideMargin, 0, geom.sideMargin, 0)
             if (currentFavSig != lastFavSignature) {
                 favRow.removeAllViews()
                 favApps.forEachIndexed { idx, info ->
@@ -257,12 +265,12 @@ object AppsShelfDesign {
                         isFav = true,
                         canMoveLeft = idx > 0,
                         canMoveRight = idx < favApps.lastIndex,
-                        w = tileW,
-                        h = tileH,
+                        w = geom.tileW,
+                        h = geom.tileH,
                         actions = actions
                     )
-                    val p = LinearLayout.LayoutParams(tileW, tileH).apply {
-                        if (idx < favApps.lastIndex) rightMargin = gap
+                    val p = LinearLayout.LayoutParams(geom.tileW, geom.tileH).apply {
+                        if (idx < favApps.lastIndex) rightMargin = geom.gap
                     }
                     favRow.addView(tile, p)
                 }
@@ -271,7 +279,7 @@ object AppsShelfDesign {
                 for (i in 0 until favRow.childCount) {
                     val child = favRow.getChildAt(i)
                     AppTileDesign.updateTileAppearance(ctx, child, settings)
-                    animateLayoutParams(child, tileW, tileH, 0, if (i < favRow.childCount - 1) gap else 0)
+                    animateLayoutParams(child, geom.tileW, geom.tileH, 0, if (i < favRow.childCount - 1) geom.gap else 0)
                 }
             }
         }
@@ -288,7 +296,7 @@ object AppsShelfDesign {
             appGrid.addView(
                 spatialGrid,
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                    .apply { leftMargin = sideMargin; rightMargin = sideMargin }
+                    .apply { leftMargin = geom.sideMargin; rightMargin = geom.sideMargin }
             )
             sortedAll.forEach { info ->
                 spatialGrid.addView(
@@ -301,22 +309,22 @@ object AppsShelfDesign {
                         isFav = favSet.contains(info.activityInfo.packageName),
                         canMoveLeft = false,
                         canMoveRight = false,
-                        w = tileW,
-                        h = tileH,
+                        w = geom.tileW,
+                        h = geom.tileH,
                         actions = actions
                     )
                 )
             }
             lastAppSignature = currentAppSig
-            spatialGrid.updateGridState(targetCols, tileW, tileH, gap, animate = false)
+            spatialGrid.updateGridState(geom.colCount, geom.tileW, geom.tileH, geom.gap, animate = false)
         } else {
             for (i in 0 until spatialGrid.childCount) {
                 val child = spatialGrid.getChildAt(i)
                 AppTileDesign.updateTileAppearance(ctx, child, settings)
             }
             (spatialGrid.layoutParams as? LinearLayout.LayoutParams)?.let { p ->
-                if (p.leftMargin != sideMargin || p.rightMargin != sideMargin) {
-                    ValueAnimator.ofInt(p.leftMargin, sideMargin).apply {
+                if (p.leftMargin != geom.sideMargin || p.rightMargin != geom.sideMargin) {
+                    ValueAnimator.ofInt(p.leftMargin, geom.sideMargin).apply {
                         duration = 320L
                         interpolator = LayoutMetrics.FLUID_SPRING
                         addUpdateListener { anim ->
@@ -329,19 +337,17 @@ object AppsShelfDesign {
                     }
                 }
             }
-            spatialGrid.updateGridState(targetCols, tileW, tileH, gap, animate = true)
+            spatialGrid.updateGridState(geom.colCount, geom.tileW, geom.tileH, geom.gap, animate = true)
         }
 
-        // Set default initial focus on the first tile on Android O+ when available.
-        val firstAppTile = favRow.getChildAt(0) ?: spatialGrid.getChildAt(0)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            firstAppTile?.isFocusedByDefault = true
-        }
-
-        if (shouldRequestFocus && !isDrawerOpen && restorePkg != null) {
-            val restoreView = favRow.findViewWithTag<View>("fav_$restorePkg")
-                ?: spatialGrid.findViewWithTag<View>("all_$restorePkg")
-            restoreView?.requestFocus()
+        // Assign default initial focus declaratively on Android O+ without forced requestFocus() calls.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isDrawerOpen) {
+            val targetView = if (shouldRequestFocus && restorePkg != null) {
+                favRow.findViewWithTag<View>("fav_$restorePkg")
+                    ?: spatialGrid.findViewWithTag<View>("all_$restorePkg")
+            } else null
+            val defaultTile = targetView ?: favRow.getChildAt(0) ?: spatialGrid.getChildAt(0)
+            defaultTile?.isFocusedByDefault = true
         }
     }
 
