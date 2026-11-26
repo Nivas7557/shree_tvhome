@@ -266,7 +266,9 @@ class HomeScreen(
             clipToPadding = false
         }
         glossyShelfBox.addView(appGrid, LayoutParams(-1, 0, 1f))
-        bodyContainer.addView(glossyShelfBox, LayoutParams(-1, 0, 1f))
+        // Align glossy App Shelf bottom edge strictly with the right-hand Clock/Side Panel bottom margin.
+        val shelfBottomMargin = LayoutMetrics.screenVerticalPadding(context) / 2
+        bodyContainer.addView(glossyShelfBox, LayoutParams(-1, 0, 1f).apply { bottomMargin = shelfBottomMargin })
     }
 
     fun setRightStageInset(rightStageWidthPx: Int) {
