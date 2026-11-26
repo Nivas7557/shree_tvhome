@@ -1,12 +1,10 @@
 // Important instructions:
-// - Dedicated Clock Widget Settings panel showing clock styles, location mode/manual city, and live preview.
-// - Preview options on focus and apply changes only when clicked/confirmed.
+// - Drive clock styles and location modes directly from Themes (single source of truth).
+// - Support live preview updates and D-Pad friendly manual city selection without hardcoded style branches.
 
 package shree.tvhome.panels
 
 import android.content.Context
-import android.view.View
-import android.view.ViewGroup
 import android.widget.LinearLayout
 import shree.tvhome.core.AppSettings
 import shree.tvhome.core.LayoutMetrics
@@ -15,56 +13,47 @@ import shree.tvhome.design.ClockWeatherCardDesign
 
 object ClockWidgetPanel {
 
-    // Builds clock style options, automatic/manual location controls, and live stage preview trigger.
+    // Builds the Clock Widget Settings panel with a live preview, style selector, and location controls.
     fun build(
-        ctx: Context,
+        context: Context,
         panel: LinearLayout,
         settings: AppSettings,
         onLiveRefresh: () -> Unit,
         onBack: () -> Unit
     ) {
-        val originalClockStyle = settings.clockStyle
-        val originalLocationMode = settings.locationMode
-        var previewActive = false
+        panel.clipChildren = false
+        panel.clipToPadding = false
 
-        val applyPreviewToStage: (String?, String?) -> Unit = { styleOverride, locModeOverride ->
-            val clockWidget = findClockWidget(panel)
-            if (clockWidget != null) {
-                if (styleOverride != null || locModeOverride != null) {
-                    previewActive = true
-                    val tempStyle = styleOverride ?: settings.clockStyle
-                    val tempLocMode = locModeOverride ?: settings.locationMode
-                    clockWidget.previewStyleAndLocation(tempStyle, tempLocMode)
-                } else if (previewActive) {
-                    previewActive = false
-                    clockWidget.previewStyleAndLocation(settings.clockStyle, settings.locationMode)
-                }
-            }
+        PanelSurfaceKit.addSectionHeader(context, panel, settings, "LIVE PREVIEW")
+        val previewWidget = ClockWeatherCardDesign(context, settings).apply {
+            isClickable = false
         }
+        panel.addView(
+            previewWidget,
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 8) }
+        )
 
-        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "CLOCK STYLE (FOCUS PREVIEW • OK TO SET)")
+        PanelSurfaceKit.addSectionHeader(context, panel, settings, "CLOCK STYLE")
         PanelSurfaceKit.addSegmentedTrack(
-            ctx, panel, settings,
+            ctx = context,
+            parent = panel,
+            settings = settings,
             options = Themes.CLOCK_STYLES.map { it.key to it.label },
             getSelected = { settings.clockStyle },
-            onFocusPreview = { hoveredKey ->
-                applyPreviewToStage(hoveredKey, null)
-            },
             onSelect = { key ->
                 settings.clockStyle = key
-                previewActive = false
+                previewWidget.refreshStyle()
                 onLiveRefresh()
             }
         )
 
-        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "WEATHER LOCATION MODE")
+        PanelSurfaceKit.addSectionHeader(context, panel, settings, "LOCATION MODE")
         PanelSurfaceKit.addSegmentedTrack(
-            ctx, panel, settings,
+            ctx = context,
+            parent = panel,
+            settings = settings,
             options = Themes.LOCATION_MODES.map { it.key to it.label },
             getSelected = { settings.locationMode },
-            onFocusPreview = { hoveredMode ->
-                applyPreviewToStage(null, hoveredMode)
-            },
             onSelect = { key ->
                 settings.locationMode = key
                 if (key == Themes.LOCATION_MODES.first().key) {
@@ -75,7 +64,7 @@ object ClockWidgetPanel {
                         .remove(AppSettings.PREF_CACHED_CITY)
                         .apply()
                 }
-                previewActive = false
+                previewWidget.triggerWeatherRefresh(true)
                 onLiveRefresh()
             }
         )
@@ -86,48 +75,22 @@ object ClockWidgetPanel {
         }
         panel.addView(
             PanelSurfaceKit.makeActionRow(
-                ctx, settings, "📍", "Manual City Picker (D-Pad)",
-                currentCity
+                context, settings, "📍", "Choose Manual Location", currentCity
             ) {
-                findClockWidget(panel)?.showLocationSelectorDialog()
+                previewWidget.showLocationSelectorDialog()
             },
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = LayoutMetrics.dp(ctx, 8) }
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 10) }
         )
 
         panel.addView(
             PanelSurfaceKit.makeActionRow(
-                ctx, settings, "↺", "Restore Saved Clock & Location",
-                "${Themes.getClockStyle(originalClockStyle).label} • ${originalLocationMode.uppercase()}"
+                context, settings, "‹", "Back to Customize", "Return to launcher customization", ""
             ) {
-                settings.clockStyle = originalClockStyle
-                settings.locationMode = originalLocationMode
-                previewActive = false
-                onLiveRefresh()
-            },
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = LayoutMetrics.dp(ctx, 8) }
-        )
-
-        panel.addView(
-            PanelSurfaceKit.makeActionRow(ctx, settings, "‹", "Back to Customize", "") {
-                applyPreviewToStage(null, null)
                 onBack()
             },
-            LinearLayout.LayoutParams(-1, -2)
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(context, 16) }
         )
     }
 
-    private fun findClockWidget(start: View): ClockWeatherCardDesign? {
-        fun search(v: View?): ClockWeatherCardDesign? {
-            if (v == null) return null
-            if (v is ClockWeatherCardDesign) return v
-            if (v is ViewGroup) {
-                for (i in 0 until v.childCount) {
-                    val found = search(v.getChildAt(i))
-                    if (found != null) return found
-                }
-            }
-            return null
-        }
-        return search(start.rootView)
-    }
+    private fun dp(ctx: Context, v: Int): Int = LayoutMetrics.dp(ctx, v)
 }
