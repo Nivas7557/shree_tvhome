@@ -1,6 +1,6 @@
 // Important instructions:
-// - Resolve location dynamically via geocoding, device Geocoder, or timezone/locale without cleartext HTTP.
-// - Tick clock and weather timers cleanly on window attach/detach without leaked handlers.
+// - Render multiple distinct clock styles (Classic, Chrono, Orbit, Digital) instead of a plain circle.
+// - Support Automatic and Manual location modes with D-Pad friendly city selection and search.
 
 package shree.tvhome.design
 
@@ -8,9 +8,11 @@ import android.app.Dialog
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RadialGradient
+import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -26,6 +28,7 @@ import android.view.Window
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import org.json.JSONObject
 import shree.tvhome.core.AnimationController
@@ -62,7 +65,17 @@ class ClockWeatherCardDesign(
         WeatherVisualSpec(95..99, "⛈️", "Thunderstorm")
     )
 
-    private val analogView = ClassicLuxuryClockView(ctx)
+    // Quick-pick cities so TV remote D-Pad users can pick a city in one click or type any city name.
+    private val quickCities = listOf(
+        CitySuggestion("Hyderabad", "Telangana", "India", 17.3850, 78.4867),
+        CitySuggestion("Visakhapatnam", "Andhra Pradesh", "India", 17.6868, 83.2185),
+        CitySuggestion("Bengaluru", "Karnataka", "India", 12.9716, 77.5946),
+        CitySuggestion("Chennai", "Tamil Nadu", "India", 13.0827, 80.2707),
+        CitySuggestion("Mumbai", "Maharashtra", "India", 19.0760, 72.8777),
+        CitySuggestion("New Delhi", "Delhi", "India", 28.6139, 77.2090)
+    )
+
+    private val clockFaceView = MultiStyleClockView(ctx)
     private val digitalTimeTv = TextView(ctx)
     private val amPmTv = TextView(ctx)
     private val dateTv = TextView(ctx)
@@ -76,22 +89,23 @@ class ClockWeatherCardDesign(
     private val bgExecutor = Executors.newSingleThreadExecutor()
     private var lastWeatherFetchMs = 0L
 
-    // Updates clock hands, digital time, and date once per second while attached.
+    // Updates clock face, digital readout, and date once per second while attached.
     private val clockTicker = object : Runnable {
         override fun run() {
             updateTimeDisplay()
-            analogView.invalidate()
+            clockFaceView.invalidate()
             uiHandler.postDelayed(this, 1000L)
         }
     }
 
-    // Builds the analog clock, digital clock/date block, and interactive city weather card.
+    // Builds the multi-style clock view, digital time/date header, and D-Pad location weather card.
     init {
         orientation = VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
-        setPadding(dp(14), dp(14), dp(14), dp(14))
+        val cardPad = (context.resources.displayMetrics.widthPixels * 0.011f).toInt().coerceIn(dp(10), dp(22))
+        setPadding(cardPad, cardPad, cardPad, cardPad)
 
-        addView(analogView, LayoutParams(dp(166), dp(166)).apply { bottomMargin = dp(8) })
+        addView(clockFaceView, LayoutParams(dp(168), dp(168)).apply { bottomMargin = dp(8) })
 
         val timeRow = LinearLayout(ctx).apply {
             orientation = HORIZONTAL
@@ -134,7 +148,7 @@ class ClockWeatherCardDesign(
                 AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 6f)
                 v.background = weatherCardBg(f)
             }
-            setOnClickListener { showLiveCitySearchDialog() }
+            setOnClickListener { showLocationSelectorDialog() }
         }
 
         val cachedVisual = decodeWeatherCode(settings.cachedWeatherCode)
@@ -160,9 +174,10 @@ class ClockWeatherCardDesign(
         }
         weatherCard.addView(condTv)
 
-        val savedCity = settings.prefs.getString(AppSettings.PREF_CACHED_CITY, settings.weatherCity.ifBlank { "Tap to Select City" })
+        val savedCity = settings.prefs.getString(AppSettings.PREF_CACHED_CITY, settings.weatherCity.ifBlank { "Auto Location" })
+        val modeTag = if (settings.locationMode == "manual") "Manual" else "Auto"
         cityTv.apply {
-            text = "📍 $savedCity  ▾"
+            text = "📍 $savedCity ($modeTag) ▾"
             textSize = 10.5f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
@@ -172,7 +187,10 @@ class ClockWeatherCardDesign(
         addView(weatherCard, LayoutParams(-1, -2))
 
         refreshStyle()
-        settings.addStyleListener { refreshStyle() }
+        settings.addStyleListener {
+            refreshStyle()
+            triggerWeatherRefresh(true)
+        }
     }
 
     private fun weatherCardBg(focused: Boolean) = GradientDrawable(
@@ -184,10 +202,15 @@ class ClockWeatherCardDesign(
         setStroke(dp(if (focused) 2 else 1), if (focused) settings.accentColor else Color.argb(80, 255, 255, 255))
     }
 
-    // Opens an interactive city search dialog with live geocoding suggestions.
-    private fun showLiveCitySearchDialog() {
+    // Opens a D-Pad friendly dialog supporting Automatic mode, quick cities, and live city search.
+    fun showLocationSelectorDialog() {
         val dialog = Dialog(context)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val scrollWrapper = ScrollView(context).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
 
         val box = LinearLayout(context).apply {
             orientation = VERTICAL
@@ -200,24 +223,141 @@ class ClockWeatherCardDesign(
                 setStroke(dp(1), Color.argb(120, 255, 255, 255))
             }
         }
+        scrollWrapper.addView(box)
 
         box.addView(TextView(context).apply {
-            text = "Search Your City (Live Weather)"
+            text = "📍  Weather Location (D-Pad Friendly)"
             textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             setPadding(0, 0, 0, dp(10))
         })
 
+        // Mode switcher row inside dialog ("Automatic" vs "Manual").
+        val modeRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        Themes.LOCATION_MODES.forEachIndexed { idx, modeSpec ->
+            val isSelected = settings.locationMode == modeSpec.key
+            val modeBtn = TextView(context).apply {
+                text = if (isSelected) "✓  ${modeSpec.label}" else modeSpec.label
+                textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                isFocusable = true
+                isClickable = true
+                setPadding(dp(10), dp(9), dp(10), dp(9))
+                background = GradientDrawable().apply {
+                    setColor(if (isSelected) LayoutMetrics.withAlpha(settings.accentColor, 180) else Color.argb(48, 255, 255, 255))
+                    cornerRadius = LayoutMetrics.dpF(context, 12f)
+                    setStroke(dp(if (isSelected) 2 else 1), if (isSelected) Color.WHITE else Color.argb(80, 255, 255, 255))
+                }
+                setOnFocusChangeListener { v, f ->
+                    v.background = GradientDrawable().apply {
+                        setColor(if (f || isSelected) LayoutMetrics.withAlpha(settings.accentColor, 185) else Color.argb(48, 255, 255, 255))
+                        cornerRadius = LayoutMetrics.dpF(context, 12f)
+                        setStroke(dp(if (f || isSelected) 2 else 1), Color.WHITE)
+                    }
+                }
+                setOnClickListener {
+                    settings.locationMode = modeSpec.key
+                    if (modeSpec.key == "auto") {
+                        settings.weatherCity = ""
+                        settings.prefs.edit()
+                            .remove(AppSettings.PREF_SAVED_LAT)
+                            .remove(AppSettings.PREF_SAVED_LON)
+                            .remove(AppSettings.PREF_CACHED_CITY)
+                            .apply()
+                        dialog.dismiss()
+                        triggerWeatherRefresh(true)
+                    } else {
+                        dialog.dismiss()
+                        showLocationSelectorDialog()
+                    }
+                }
+            }
+            modeRow.addView(modeBtn, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                if (idx == 0) rightMargin = dp(8)
+            })
+        }
+        box.addView(modeRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+
+        val suggestionsContainer = LinearLayout(context).apply { orientation = VERTICAL }
+
+        val applySelectedCity: (CitySuggestion) -> Unit = { item ->
+            settings.locationMode = "manual"
+            settings.weatherCity = item.name
+            settings.prefs.edit()
+                .putString(AppSettings.PREF_CACHED_CITY, item.name)
+                .putFloat(AppSettings.PREF_SAVED_LAT, item.lat.toFloat())
+                .putFloat(AppSettings.PREF_SAVED_LON, item.lon.toFloat())
+                .apply()
+            cityTv.text = "📍 ${item.name} (Manual) ▾"
+            dialog.dismiss()
+            triggerWeatherRefresh(true)
+        }
+
+        val renderCityRows: (List<CitySuggestion>, String) -> Unit = { list, heading ->
+            suggestionsContainer.removeAllViews()
+            suggestionsContainer.addView(TextView(context).apply {
+                text = heading
+                textSize = 10f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(settings.accentColor)
+                setPadding(dp(2), dp(2), dp(2), dp(6))
+            })
+            list.chunked(2).forEach { pair ->
+                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+                pair.forEachIndexed { colIdx, item ->
+                    val rowBtn = LinearLayout(context).apply {
+                        orientation = VERTICAL
+                        isFocusable = true
+                        isClickable = true
+                        setPadding(dp(10), dp(7), dp(10), dp(7))
+                        background = GradientDrawable().apply {
+                            setColor(Color.argb(45, 255, 255, 255))
+                            cornerRadius = LayoutMetrics.dpF(context, 10f)
+                            setStroke(dp(1), Color.argb(65, 255, 255, 255))
+                        }
+                        setOnFocusChangeListener { v, f ->
+                            v.background = GradientDrawable().apply {
+                                setColor(if (f) LayoutMetrics.withAlpha(settings.accentColor, 150) else Color.argb(45, 255, 255, 255))
+                                cornerRadius = LayoutMetrics.dpF(context, 10f)
+                                setStroke(dp(if (f) 2 else 1), if (f) Color.WHITE else Color.argb(65, 255, 255, 255))
+                            }
+                        }
+                        setOnClickListener { applySelectedCity(item) }
+                        addView(TextView(context).apply {
+                            text = "📍 ${item.name}"
+                            textSize = 11f
+                            typeface = Typeface.DEFAULT_BOLD
+                            setTextColor(Color.WHITE)
+                        })
+                        val sub = listOf(item.admin, item.country).filter { it.isNotBlank() }.joinToString(", ")
+                        if (sub.isNotEmpty()) {
+                            addView(TextView(context).apply {
+                                text = sub
+                                textSize = 8.5f
+                                setTextColor(Color.argb(195, 210, 230, 255))
+                            })
+                        }
+                    }
+                    row.addView(rowBtn, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                        if (colIdx == 0 && pair.size > 1) rightMargin = dp(6)
+                    })
+                }
+                suggestionsContainer.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+            }
+        }
+
         val input = EditText(context).apply {
             isSingleLine = true
             isFocusable = true
             isFocusableInTouchMode = true
-            hint = "Type city name..."
-            setText(settings.weatherCity)
+            hint = "Or type any city name..."
+            setText(if (settings.locationMode == "manual") settings.weatherCity else "")
             setTextColor(Color.WHITE)
             setHintTextColor(Color.argb(150, 200, 220, 245))
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(12), dp(9), dp(12), dp(9))
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
             background = GradientDrawable().apply {
                 setColor(Color.argb(55, 255, 255, 255))
@@ -225,113 +365,59 @@ class ClockWeatherCardDesign(
                 setStroke(dp(1), settings.accentColor)
             }
         }
-        box.addView(input, LayoutParams(dp(340), -2))
+        box.addView(input, LinearLayout.LayoutParams(dp(350), -2).apply { bottomMargin = dp(8) })
 
         val statusTv = TextView(context).apply {
-            text = "Type at least 2 letters for live suggestions..."
-            textSize = 10.5f
+            text = "Select a quick city with D-Pad or type 2+ letters to search"
+            textSize = 9.5f
             setTextColor(Color.rgb(145, 215, 255))
-            setPadding(dp(4), dp(8), dp(4), dp(6))
+            setPadding(dp(2), 0, dp(2), dp(6))
         }
         box.addView(statusTv)
-
-        val suggestionsContainer = LinearLayout(context).apply { orientation = VERTICAL }
         box.addView(suggestionsContainer)
 
-        dialog.setContentView(box)
+        renderCityRows(quickCities, "QUICK CITIES (D-PAD SELECT)")
+
+        dialog.setContentView(scrollWrapper)
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
             clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
-            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN)
         }
 
         var searchRunnable: Runnable? = null
-
-        val triggerSearch: (String) -> Unit = { q ->
-            searchRunnable?.let { uiHandler.removeCallbacks(it) }
-            if (q.length < 2) {
-                suggestionsContainer.removeAllViews()
-                statusTv.text = "Type at least 2 characters..."
-            } else {
-                statusTv.text = "Searching '$q'..."
-                searchRunnable = Runnable {
-                    bgExecutor.execute {
-                        val (list, errMsg) = fetchCitySuggestionsWithStatus(q)
-                        uiHandler.post {
-                            suggestionsContainer.removeAllViews()
-                            if (errMsg != null) {
-                                statusTv.text = "Network error: $errMsg"
-                            } else if (list.isEmpty()) {
-                                statusTv.text = "No cities found for '$q'"
-                            } else {
-                                statusTv.text = "Select a city below:"
-                                for (item in list) {
-                                    val sub = listOf(item.admin, item.country).filter { it.isNotBlank() }.joinToString(", ")
-                                    val rowBtn = LinearLayout(context).apply {
-                                        orientation = VERTICAL
-                                        isFocusable = true
-                                        isClickable = true
-                                        setPadding(dp(12), dp(8), dp(12), dp(8))
-                                        background = GradientDrawable().apply {
-                                            setColor(Color.argb(42, 255, 255, 255))
-                                            cornerRadius = LayoutMetrics.dpF(context, 10f)
-                                            setStroke(dp(1), Color.argb(60, 255, 255, 255))
-                                        }
-                                        setOnFocusChangeListener { v, f ->
-                                            v.background = GradientDrawable().apply {
-                                                setColor(if (f) LayoutMetrics.withAlpha(settings.accentColor, 140) else Color.argb(42, 255, 255, 255))
-                                                cornerRadius = LayoutMetrics.dpF(context, 10f)
-                                                setStroke(dp(if (f) 2 else 1), if (f) Color.WHITE else Color.argb(60, 255, 255, 255))
-                                            }
-                                        }
-                                        setOnClickListener {
-                                            settings.weatherCity = item.name
-                                            settings.prefs.edit()
-                                                .putString(AppSettings.PREF_CACHED_CITY, item.name)
-                                                .putFloat(AppSettings.PREF_SAVED_LAT, item.lat.toFloat())
-                                                .putFloat(AppSettings.PREF_SAVED_LON, item.lon.toFloat())
-                                                .apply()
-
-                                            cityTv.text = "📍 ${item.name}  ▾"
-                                            dialog.dismiss()
-                                            triggerWeatherRefresh(true)
-                                        }
-                                    }
-                                    rowBtn.addView(TextView(context).apply {
-                                        text = "📍 ${item.name}"
-                                        textSize = 12f
-                                        typeface = Typeface.DEFAULT_BOLD
-                                        setTextColor(Color.WHITE)
-                                    })
-                                    if (sub.isNotEmpty()) {
-                                        rowBtn.addView(TextView(context).apply {
-                                            text = sub
-                                            textSize = 9.5f
-                                            setTextColor(Color.argb(200, 210, 230, 255))
-                                        })
-                                    }
-                                    suggestionsContainer.addView(rowBtn, LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
-                                }
-                            }
-                        }
-                    }
-                }
-                uiHandler.postDelayed(searchRunnable!!, 300L)
-            }
-        }
-
         input.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
-                triggerSearch(s?.toString()?.trim().orEmpty())
+                val q = s?.toString()?.trim().orEmpty()
+                searchRunnable?.let { uiHandler.removeCallbacks(it) }
+                if (q.length < 2) {
+                    renderCityRows(quickCities, "QUICK CITIES (D-PAD SELECT)")
+                    statusTv.text = "Select a quick city with D-Pad or type 2+ letters to search"
+                } else {
+                    statusTv.text = "Searching '$q'..."
+                    searchRunnable = Runnable {
+                        bgExecutor.execute {
+                            val (list, errMsg) = fetchCitySuggestionsWithStatus(q)
+                            uiHandler.post {
+                                if (errMsg != null) {
+                                    statusTv.text = "Network error: $errMsg"
+                                } else if (list.isEmpty()) {
+                                    statusTv.text = "No cities found for '$q'"
+                                } else {
+                                    statusTv.text = "Select a result below:"
+                                    renderCityRows(list, "SEARCH RESULTS")
+                                }
+                            }
+                        }
+                    }
+                    uiHandler.postDelayed(searchRunnable!!, 300L)
+                }
             }
         })
 
         dialog.show()
-        if (input.text.toString().trim().length >= 2) {
-            triggerSearch(input.text.toString().trim())
-        }
     }
 
     private fun fetchCitySuggestions(query: String): List<CitySuggestion> =
@@ -341,7 +427,7 @@ class ClockWeatherCardDesign(
     private fun fetchCitySuggestionsWithStatus(query: String): Pair<List<CitySuggestion>, String?> {
         try {
             val encoded = URLEncoder.encode(query, "UTF-8")
-            val url = "https://geocoding-api.open-meteo.com/v1/search?name=$encoded&count=5&language=en&format=json"
+            val url = "https://geocoding-api.open-meteo.com/v1/search?name=$encoded&count=6&language=en&format=json"
             val rawResponse = fetchUrl(url)
             val json = JSONObject(rawResponse)
             val arr = json.optJSONArray("results")
@@ -365,7 +451,7 @@ class ClockWeatherCardDesign(
 
         return try {
             @Suppress("DEPRECATION")
-            val addresses = Geocoder(context, Locale.getDefault()).getFromLocationName(query, 5)
+            val addresses = Geocoder(context, Locale.getDefault()).getFromLocationName(query, 6)
             if (!addresses.isNullOrEmpty()) {
                 val out = addresses.mapNotNull { addr ->
                     val cName = addr.locality ?: addr.subAdminArea ?: addr.featureName ?: return@mapNotNull null
@@ -386,11 +472,12 @@ class ClockWeatherCardDesign(
         }
     }
 
-    // Updates clock accent, glass theme surface, and compact/wide stage proportions.
+    // Updates clock style, accent, glass theme surface, and stage sizing proportionally.
     fun refreshStyle() {
         val accent = settings.accentColor
         amPmTv.setTextColor(accent)
-        analogView.updateAccent(accent)
+        clockFaceView.updateStyle(settings.clockStyle, accent)
+
         background = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
             Themes.getGlassPanelColors(settings.tileColor, accent, elevated = false)
@@ -402,15 +489,22 @@ class ClockWeatherCardDesign(
 
         val minWidth = Themes.PANEL_WIDTH_OPTIONS.first()
         val isNarrow = settings.panelWidthPct <= minWidth + 2
-        val dialSize = if (isNarrow) dp(126) else dp(166)
-        analogView.layoutParams.width = dialSize
-        analogView.layoutParams.height = dialSize
+        val baseDial = if (isNarrow) 128 else 172
+        val dialSize = (context.resources.displayMetrics.heightPixels * (if (isNarrow) 0.19f else 0.25f))
+            .toInt().coerceIn(dp(110), dp(baseDial))
+
+        clockFaceView.layoutParams.width = dialSize
+        clockFaceView.layoutParams.height = dialSize
         digitalTimeTv.textSize = if (isNarrow) 22f else 28f
         dateTv.textSize = if (isNarrow) 12f else 14f
-        analogView.requestLayout()
+        clockFaceView.requestLayout()
+
+        val savedCity = settings.prefs.getString(AppSettings.PREF_CACHED_CITY, settings.weatherCity.ifBlank { "Auto Location" })
+        val modeTag = if (settings.locationMode == "manual") "Manual" else "Auto"
+        cityTv.text = "📍 $savedCity ($modeTag) ▾"
     }
 
-    // Fetches current weather on the shared executor when forced or after the 20-minute interval.
+    // Fetches weather using saved manual coordinates or automatic timezone/locale resolution.
     fun triggerWeatherRefresh(force: Boolean = false) {
         val now = System.currentTimeMillis()
         if (!force && now - lastWeatherFetchMs < 20 * 60 * 1000L) return
@@ -418,9 +512,10 @@ class ClockWeatherCardDesign(
 
         bgExecutor.execute {
             try {
-                var lat = settings.prefs.getFloat(AppSettings.PREF_SAVED_LAT, 0f).toDouble()
-                var lon = settings.prefs.getFloat(AppSettings.PREF_SAVED_LON, 0f).toDouble()
-                var cityName = settings.weatherCity.trim()
+                val isManual = settings.locationMode == "manual"
+                var lat = if (isManual) settings.prefs.getFloat(AppSettings.PREF_SAVED_LAT, 0f).toDouble() else 0.0
+                var lon = if (isManual) settings.prefs.getFloat(AppSettings.PREF_SAVED_LON, 0f).toDouble() else 0.0
+                var cityName = if (isManual) settings.weatherCity.trim() else ""
 
                 if (cityName.isNotEmpty() && (lat == 0.0 || lon == 0.0)) {
                     val found = fetchCitySuggestions(cityName).firstOrNull()
@@ -435,7 +530,6 @@ class ClockWeatherCardDesign(
                     }
                 }
 
-                // Resolve location dynamically from device TimeZone or Locale without cleartext HTTP.
                 if (lat == 0.0 && lon == 0.0) {
                     val tzCity = TimeZone.getDefault().id
                         .substringAfterLast('/')
@@ -458,6 +552,7 @@ class ClockWeatherCardDesign(
                 val temp = "${cw.getDouble("temperature_2m").toInt()}°C"
                 val code = cw.getInt("weather_code")
                 val (emoji, desc) = decodeWeatherCode(code)
+                val modeTag = if (isManual) "Manual" else "Auto"
 
                 settings.prefs.edit()
                     .putString(AppSettings.PREF_CACHED_TEMP, temp)
@@ -470,7 +565,7 @@ class ClockWeatherCardDesign(
                     weatherIconTv.text = emoji
                     tempTv.text = temp
                     condTv.text = desc
-                    cityTv.text = "📍 $cityName  ▾"
+                    cityTv.text = "📍 $cityName ($modeTag) ▾"
                 }
             } catch (_: Exception) {}
         }
@@ -513,8 +608,8 @@ class ClockWeatherCardDesign(
 
     private fun dp(v: Int): Int = LayoutMetrics.dp(context, v)
 
-    // Custom analog watch face drawing dial ticks, numerals, and real-time hands.
-    private class ClassicLuxuryClockView(ctx: Context) : View(ctx) {
+    // Multi-style clock renderer supporting Classic, Chrono arc, Orbit ring, and Digital card styles.
+    private class MultiStyleClockView(ctx: Context) : View(ctx) {
         private val bezelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
         private val innerRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
         private val dialPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -524,15 +619,22 @@ class ClockWeatherCardDesign(
             typeface = Typeface.create("serif", Typeface.BOLD)
         }
         private val handPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
+        private val arcPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+        }
+        private val arcRect = RectF()
+        private var styleKey = Themes.CLOCK_STYLES.first().key
         private var accent = Themes.ACCENTS.first().color
 
-        // Updates clock accent border and redraws dial.
-        fun updateAccent(col: Int) {
-            accent = col
+        // Updates active clock style and accent color and redraws immediately.
+        fun updateStyle(newStyle: String, newAccent: Int) {
+            styleKey = newStyle
+            accent = newAccent
             invalidate()
         }
 
-        // Renders analog clock dial, minute/hour ticks, hour numbers, and hands.
+        // Renders the active clock style on the canvas.
         override fun onDraw(canvas: Canvas) {
             val w = width.toFloat()
             val h = height.toFloat()
@@ -541,6 +643,16 @@ class ClockWeatherCardDesign(
             val cy = h / 2f
             val r = minOf(cx, cy) - LayoutMetrics.dpF(context, 4f)
 
+            when (styleKey) {
+                "chrono" -> drawChronoStyle(canvas, w, h, cx, cy, r)
+                "minimal" -> drawOrbitStyle(canvas, cx, cy, r)
+                "digital" -> drawDigitalStyle(canvas, w, h, cx, cy, r)
+                else -> drawClassicStyle(canvas, w, h, cx, cy, r)
+            }
+        }
+
+        // Classic luxury dial with radial face, ticks, numerals, and three hands.
+        private fun drawClassicStyle(canvas: Canvas, w: Float, h: Float, cx: Float, cy: Float, r: Float) {
             dialPaint.shader = RadialGradient(
                 cx, cy * 0.85f, r,
                 intArrayOf(Color.rgb(34, 48, 96), Color.rgb(16, 24, 54), Color.rgb(8, 12, 28)),
@@ -581,6 +693,85 @@ class ClockWeatherCardDesign(
                 canvas.drawText(hrNum.toString(), nx, ny, numPaint)
             }
 
+            drawHands(canvas, cx, cy, r)
+        }
+
+        // Chronograph arc dial with progress arcs for seconds and minutes.
+        private fun drawChronoStyle(canvas: Canvas, w: Float, h: Float, cx: Float, cy: Float, r: Float) {
+            dialPaint.shader = RadialGradient(
+                cx, cy, r,
+                intArrayOf(Color.rgb(24, 34, 68), Color.rgb(10, 14, 30)),
+                null, Shader.TileMode.CLAMP
+            )
+            canvas.drawCircle(cx, cy, r, dialPaint)
+
+            val cal = Calendar.getInstance()
+            val secSweep = (cal.get(Calendar.SECOND) / 60f) * 360f
+            val minSweep = (cal.get(Calendar.MINUTE) / 60f) * 360f
+
+            arcPaint.strokeWidth = LayoutMetrics.dpF(context, 5f)
+            arcPaint.color = Color.argb(45, 255, 255, 255)
+            arcRect.set(cx - r * 0.90f, cy - r * 0.90f, cx + r * 0.90f, cy + r * 0.90f)
+            canvas.drawArc(arcRect, 0f, 360f, false, arcPaint)
+
+            arcPaint.color = accent
+            canvas.drawArc(arcRect, -90f, secSweep, false, arcPaint)
+
+            arcPaint.strokeWidth = LayoutMetrics.dpF(context, 3.5f)
+            arcPaint.color = Color.rgb(120, 235, 195)
+            arcRect.set(cx - r * 0.74f, cy - r * 0.74f, cx + r * 0.74f, cy + r * 0.74f)
+            canvas.drawArc(arcRect, -90f, minSweep, false, arcPaint)
+
+            drawHands(canvas, cx, cy, r * 0.92f)
+        }
+
+        // Orbit ring dial with a dashed outer track and clean geometric hands.
+        private fun drawOrbitStyle(canvas: Canvas, cx: Float, cy: Float, r: Float) {
+            innerRingPaint.style = Paint.Style.STROKE
+            innerRingPaint.strokeWidth = LayoutMetrics.dpF(context, 2f)
+            innerRingPaint.color = LayoutMetrics.withAlpha(accent, 140)
+            innerRingPaint.pathEffect = DashPathEffect(floatArrayOf(12f, 10f), 0f)
+            canvas.drawCircle(cx, cy, r * 0.88f, innerRingPaint)
+            innerRingPaint.pathEffect = null
+
+            innerRingPaint.strokeWidth = LayoutMetrics.dpF(context, 1.2f)
+            innerRingPaint.color = Color.argb(65, 255, 255, 255)
+            canvas.drawCircle(cx, cy, r * 0.62f, innerRingPaint)
+
+            drawHands(canvas, cx, cy, r)
+        }
+
+        // Framed digital telemetry dial displaying large 24h/12h time and seconds inside a rounded badge.
+        private fun drawDigitalStyle(canvas: Canvas, w: Float, h: Float, cx: Float, cy: Float, r: Float) {
+            val pad = LayoutMetrics.dpF(context, 6f)
+            arcRect.set(pad, pad, w - pad, h - pad)
+            dialPaint.shader = LinearGradient(
+                0f, 0f, w, h,
+                intArrayOf(Color.argb(175, 22, 32, 66), Color.argb(210, 10, 16, 36)),
+                null, Shader.TileMode.CLAMP
+            )
+            canvas.drawRoundRect(arcRect, r * 0.35f, r * 0.35f, dialPaint)
+
+            arcPaint.style = Paint.Style.STROKE
+            arcPaint.strokeWidth = LayoutMetrics.dpF(context, 2.2f)
+            arcPaint.color = accent
+            canvas.drawRoundRect(arcRect, r * 0.35f, r * 0.35f, arcPaint)
+
+            val now = Date()
+            val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(now)
+            val secStr = SimpleDateFormat(":ss", Locale.getDefault()).format(now)
+
+            numPaint.typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            numPaint.textSize = r * 0.36f
+            numPaint.color = Color.WHITE
+            canvas.drawText(timeStr, cx, cy - r * 0.04f, numPaint)
+
+            numPaint.textSize = r * 0.22f
+            numPaint.color = accent
+            canvas.drawText(secStr, cx, cy + r * 0.28f, numPaint)
+        }
+
+        private fun drawHands(canvas: Canvas, cx: Float, cy: Float, r: Float) {
             val cal = Calendar.getInstance()
             val sec = cal.get(Calendar.SECOND)
             val min = cal.get(Calendar.MINUTE) + sec / 60f
@@ -588,7 +779,7 @@ class ClockWeatherCardDesign(
 
             drawHand(canvas, cx, cy, (hr * 30f - 90f), r * 0.45f, 4.4f, Color.WHITE)
             drawHand(canvas, cx, cy, (min * 6f - 90f), r * 0.66f, 2.8f, Color.rgb(185, 230, 255))
-            drawHand(canvas, cx, cy, (sec * 6f - 90f), r * 0.76f, 1.5f, Color.rgb(255, 95, 135))
+            drawHand(canvas, cx, cy, (sec * 6f - 90f), r * 0.76f, 1.5f, accent)
 
             handPaint.style = Paint.Style.FILL
             handPaint.color = accent
