@@ -1,6 +1,6 @@
 // Important instructions:
-// - Never call requestFocus(); rely exclusively on Android's native FocusFinder and focusSearch() flow.
-// - Support both Android TV D-Pad remote navigation and mobile touch testing without focus traps or crashes.
+// - Route D-Pad keys reliably across TopHeaderBar and every side panel (Quick, Wi-Fi, Alerts, Power, Customize, Sub-panels).
+// - Enforce horizontal-only navigation inside inline sub-menus so Up/Down cleanly exits to previous/next parent row.
 
 package shree.tvhome
 
@@ -12,7 +12,7 @@ import android.widget.SeekBar
 
 object FocusRouter {
 
-    // Finds the first visible, enabled focusable view in a subtree without calling requestFocus().
+    // Finds the first visible, enabled focusable view inside a panel or container.
     fun findFirstFocusable(root: View): View? {
         if (root.visibility != View.VISIBLE || !root.isEnabled) return null
         if (root.isFocusable) return root
@@ -25,7 +25,7 @@ object FocusRouter {
         return null
     }
 
-    // Safely verifies whether targetView is a descendant of container before invoking FocusFinder.
+    // Safely verifies whether targetView is a descendant of container.
     private fun isDescendantOf(targetView: View?, container: ViewGroup): Boolean {
         var parent = targetView?.parent
         while (parent != null) {
@@ -33,6 +33,16 @@ object FocusRouter {
             parent = parent.parent
         }
         return false
+    }
+
+    // Finds an ancestor marked as an inline horizontal sub-menu if present.
+    private fun findInlineSubMenuAncestor(view: View?): ViewGroup? {
+        var parent = view?.parent
+        while (parent is View) {
+            if (parent.tag == "inline_sub_menu") return parent as? ViewGroup
+            parent = parent.parent
+        }
+        return null
     }
 
     // Maps D-Pad key codes to Android View focus directions.
@@ -44,7 +54,7 @@ object FocusRouter {
         else -> null
     }
 
-    // Routes D-Pad keys cleanly across topNavBar and drawerLayout without forced focus jumps.
+    // Routes D-Pad keys across topNavBar, open side panels, and horizontal inline sub-menus.
     fun handleKeyEvent(
         event: KeyEvent,
         isDrawerOpen: Boolean,
@@ -60,7 +70,7 @@ object FocusRouter {
         val inDrawer = drawerFocus != null
         val current = drawerFocus ?: topNavBar.findFocus()
 
-        // Allow horizontal sliders (SeekBar or pill_slider) to process LEFT/RIGHT D-Pad steps directly.
+        // Allow horizontal sliders (SeekBar or pill_slider) to consume LEFT/RIGHT steps directly.
         if (inDrawer && current != null && (direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT)) {
             if (current is SeekBar || current.tag == "pill_slider") {
                 return false
@@ -68,7 +78,36 @@ object FocusRouter {
         }
 
         if (event.action != KeyEvent.ACTION_DOWN) return false
+
+        // Cross-region entry: Pressing DPAD_DOWN while on TopHeaderBar jumps directly into the open panel's first item.
+        if (!inDrawer && direction == View.FOCUS_DOWN) {
+            val panelFirst = (activePanel?.let { findFirstFocusable(it) }) ?: findFirstFocusable(drawerLayout)
+            if (panelFirst != null) {
+                panelFirst.requestFocus()
+                return true
+            }
+            return false
+        }
+
         if (current == null) return false
+
+        // Inside an inline horizontal sub-menu: allow LEFT/RIGHT only, and delegate UP/DOWN to exit cleanly.
+        val inlineSubMenu = if (inDrawer) findInlineSubMenuAncestor(current) else null
+        if (inlineSubMenu != null) {
+            if (direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT) {
+                val nextH = FocusFinder.getInstance().findNextFocus(inlineSubMenu, current, direction)
+                if (nextH != null && nextH !== current) {
+                    nextH.requestFocus()
+                }
+                return true
+            }
+            if (direction == View.FOCUS_UP || direction == View.FOCUS_DOWN) {
+                val handler = inlineSubMenu.getTag(R.id.tag_submenu_exit_handler) as? ((Int) -> Boolean)
+                if (handler != null && handler(direction)) {
+                    return true
+                }
+            }
+        }
 
         val ownerContainer = when {
             inDrawer && isDescendantOf(current, drawerLayout) -> drawerLayout
@@ -76,7 +115,6 @@ object FocusRouter {
             else -> null
         }
 
-        // Let Android's FocusFinder resolve sibling focus inside the active region first.
         if (ownerContainer != null) {
             val nextInRegion = FocusFinder.getInstance().findNextFocus(ownerContainer, current, direction)
             if (nextInRegion != null && nextInRegion !== current) {
@@ -84,17 +122,17 @@ object FocusRouter {
             }
         }
 
-        // Allow natural downward transition from topNavBar into the open drawer panel.
-        if (!inDrawer && direction == View.FOCUS_DOWN && activePanel != null) {
-            return false
+        // Pressing DPAD_UP at the top edge of any panel returns focus cleanly to its TopHeaderBar icon.
+        if (inDrawer && direction == View.FOCUS_UP) {
+            val navTarget = if (activeParentTag.isNotEmpty()) topNavBar.findViewWithTag<View>(activeParentTag) else null
+            val fallbackNav = navTarget ?: findFirstFocusable(topNavBar)
+            if (fallbackNav != null) {
+                fallbackNav.requestFocus()
+                return true
+            }
         }
 
-        // Allow natural upward transition from the top edge of drawerLayout back to topNavBar.
-        if (inDrawer && direction == View.FOCUS_UP && activeParentTag.isNotEmpty()) {
-            return false
-        }
-
-        // Prevent horizontal D-Pad presses at drawer edges from escaping into background grids.
+        // Prevent horizontal edges inside the drawer from escaping into background grids.
         if (inDrawer && (direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT)) {
             return true
         }
