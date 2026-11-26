@@ -169,14 +169,12 @@ class PanelHub(
         if (isOpen && mode == currentMode) close() else open(mode)
     }
 
-    private fun setBackgroundSiblingsFocusable(enabled: Boolean) {
-        val parent = drawerLayout.parent as? ViewGroup ?: return
-        val focusability = if (enabled) ViewGroup.FOCUS_AFTER_DESCENDANTS else ViewGroup.FOCUS_BLOCK_DESCENDANTS
-        for (i in 0 until parent.childCount) {
-            val child = parent.getChildAt(i)
-            if (child !== drawerLayout && child !== scrim) {
-                (child as? ViewGroup)?.descendantFocusability = focusability
-            }
+    private fun setBodyFocusable(enabled: Boolean) {
+        val body = (mainPage as? HomeScreen)?.bodyContainer ?: return
+        body.descendantFocusability = if (enabled) {
+            ViewGroup.FOCUS_AFTER_DESCENDANTS
+        } else {
+            ViewGroup.FOCUS_BLOCK_DESCENDANTS
         }
     }
 
@@ -185,7 +183,7 @@ class PanelHub(
         currentMode = mode
         isOpen = true
 
-        setBackgroundSiblingsFocusable(false)
+        setBodyFocusable(false)
 
         val screenW = context.resources.displayMetrics.widthPixels
         val minStageW = LayoutMetrics.dp(context, Themes.PANEL_MIN_WIDTH_DP)
@@ -227,7 +225,7 @@ class PanelHub(
         returnFocusTagInDrawer = null
         val out = maxOf(LayoutMetrics.dp(context, 340), drawerLayout.width + LayoutMetrics.dp(context, 30))
 
-        setBackgroundSiblingsFocusable(true)
+        setBodyFocusable(true)
 
         AnimationController.animatePanelExit(drawerLayout, stageWidget, out, settings.motionStyle) {
             scrim.visibility = View.GONE
