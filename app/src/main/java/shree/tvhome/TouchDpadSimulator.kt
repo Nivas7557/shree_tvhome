@@ -9,13 +9,18 @@ import android.os.SystemClock
 import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.app.UiModeManager
+import android.content.Context
+import android.content.res.Configuration
 import android.view.ViewConfiguration
-import shree.tvhome.core.DeviceSpecs
 import kotlin.math.abs
 
 class TouchDpadSimulator(private val activity: Activity) {
 
-    private val isMobileTestDevice: Boolean = !DeviceSpecs.isTv(activity)
+    // Enable touch D-Pad gesture simulation automatically on non-TV (mobile/tablet) test devices.
+    private val isMobileTestDevice: Boolean =
+        (activity.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType !=
+            Configuration.UI_MODE_TYPE_TELEVISION
     private val swipeThresholdPx: Float = ViewConfiguration.get(activity).scaledTouchSlop * 2.4f
     private var gestureConsumed = false
 
