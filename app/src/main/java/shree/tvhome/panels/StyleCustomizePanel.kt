@@ -1,6 +1,6 @@
 // Important instructions:
-// - Reference mood presets from MoodPresets and clock/location options from Themes (single source of truth).
-// - Add Widget Style and Location Mode (Automatic / Manual) controls with D-Pad manual location selector.
+// - Derive all palettes, accents, motion styles, presets, clock styles, and location modes dynamically from their core sources.
+// - Adding, removing, or modifying items in core lists automatically reflects in panel cards without manual panel edits or focus loss.
 
 package shree.tvhome.panels
 
@@ -26,7 +26,7 @@ import shree.tvhome.design.ClockWeatherCardDesign
 
 object StyleCustomizePanel {
 
-    // Builds all customization controls including Widget Style and Location Mode.
+    // Builds all customization sections dynamically from single-source-of-truth registries.
     fun build(
         ctx: Context,
         panel: LinearLayout,
@@ -53,14 +53,14 @@ object StyleCustomizePanel {
             }
         )
 
-        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "LOCATION MODE (AUTO / MANUAL)")
+        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "LOCATION MODE")
         PanelSurfaceKit.addSegmentedTrack(
             ctx, panel, settings,
             options = Themes.LOCATION_MODES.map { it.key to it.label },
             getSelected = { settings.locationMode },
             onSelect = { key ->
                 settings.locationMode = key
-                if (key == "auto") {
+                if (key == Themes.LOCATION_MODES.first().key) {
                     settings.weatherCity = ""
                     settings.prefs.edit()
                         .remove(AppSettings.PREF_SAVED_LAT)
@@ -73,19 +73,17 @@ object StyleCustomizePanel {
         )
 
         val currentCityLabel = settings.weatherCity.ifBlank {
-            settings.prefs.getString(AppSettings.PREF_CACHED_CITY, "Automatic") ?: "Automatic"
+            settings.prefs.getString(AppSettings.PREF_CACHED_CITY, Themes.LOCATION_MODES.first().label)
+                ?: Themes.LOCATION_MODES.first().label
         }
+        val manualModeKey = Themes.LOCATION_MODES.last().key
         panel.addView(
             PanelSurfaceKit.makeActionRow(
-                ctx, settings, "📍", "Select Manual City (D-Pad)",
-                if (settings.locationMode == "manual") "Manual: $currentCityLabel" else "Auto ($currentCityLabel) • Tap for Manual"
+                ctx, settings, "📍", "Select Manual City",
+                if (settings.locationMode == manualModeKey) currentCityLabel else "${Themes.LOCATION_MODES.first().label}: $currentCityLabel"
             ) {
                 val stageClock = findClockWidgetInHierarchy(panel)
-                if (stageClock != null) {
-                    stageClock.showLocationSelectorDialog()
-                } else {
-                    showGreetingDialog(ctx, settings, onLiveRefresh, onRefreshPanel)
-                }
+                stageClock?.showLocationSelectorDialog()
             },
             LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 6) }
         )
@@ -97,13 +95,13 @@ object StyleCustomizePanel {
             clipToPadding = false
         }
         topRow.addView(
-            makeActionTile(ctx, settings, "👤 ", settings.userName, "Edit Profile & DP") { onEditProfile() },
+            makeActionTile(ctx, settings, "👤 ", settings.userName, "Profile & Avatar") { onEditProfile() },
             LinearLayout.LayoutParams(0, dp(ctx, 52), 1f).apply { rightMargin = dp(ctx, 6) }
         )
 
         val hiddenCount = settings.getHiddenApps().size
         topRow.addView(
-            makeActionTile(ctx, settings, "👁 ", "Hidden Apps", "$hiddenCount hidden") {
+            makeActionTile(ctx, settings, "👁 ", "Hidden Apps", "$hiddenCount") {
                 onCloseDrawer()
                 onOpenHidden()
             },
@@ -111,7 +109,7 @@ object StyleCustomizePanel {
         )
         panel.addView(topRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 6) })
 
-        val greetSub = settings.greetingPhrase.ifBlank { "Auto time-based greeting" }
+        val greetSub = settings.greetingPhrase.ifBlank { "Auto" }
         panel.addView(
             PanelSurfaceKit.makeActionRow(ctx, settings, "💬", "Custom Greeting Status", greetSub) {
                 showGreetingDialog(ctx, settings, onLiveRefresh, onRefreshPanel)
@@ -120,7 +118,7 @@ object StyleCustomizePanel {
         )
 
         panel.addView(
-            PanelSurfaceKit.makeActionRow(ctx, settings, "🖼", "Wallpaper & Live Effects", "Dynamic scenes, blur & gallery photos") {
+            PanelSurfaceKit.makeActionRow(ctx, settings, "🖼", "Wallpaper & Live Effects", settings.liveWallpaperMode) {
                 onOpenWallpaper()
             },
             LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 4) }
@@ -170,135 +168,178 @@ object StyleCustomizePanel {
             }
         )
 
-        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "GLOBAL MOTION STYLE (TAP TO PREVIEW)")
-        val allMotionButtons = ArrayList<Pair<String, TextView>>()
-        AnimationController.STYLES.chunked(4).forEach { rowChunk ->
-            val r = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                clipChildren = false
-                clipToPadding = false
-            }
-            rowChunk.forEachIndexed { idx, spec ->
-                val isSel = settings.motionStyle == spec.key
-                val btn = TextView(ctx).apply {
-                    text = spec.label
-                    textSize = 9.5f
-                    typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                    isFocusable = true
-                    isClickable = true
-                    background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, isSel, settings.tileColor)
-                    setOnFocusChangeListener { v, f ->
-                        AnimationController.animateFocus(v, f, settings.motionStyle, 1.03f, 3f)
-                        v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, f || settings.motionStyle == spec.key, settings.tileColor)
-                    }
-                    setOnClickListener {
-                        settings.motionStyle = spec.key
-                        allMotionButtons.forEach { (k, b) ->
-                            b.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, b.hasFocus() || k == settings.motionStyle, settings.tileColor)
-                        }
-                        val hostPanel = (panel.parent?.parent as? View) ?: panel
-                        AnimationController.playDemoPreview(hostPanel, spec.key)
-                    }
-                }
-                allMotionButtons.add(spec.key to btn)
-                r.addView(btn, LinearLayout.LayoutParams(0, dp(ctx, 34), 1f).apply {
-                    if (idx < rowChunk.lastIndex) rightMargin = dp(ctx, 5)
-                })
-            }
-            panel.addView(r, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 5) })
-        }
-
-        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "ACCENT AURA")
-        val swatchRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
+        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "GLOBAL MOTION STYLE")
+        val motionContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
             clipChildren = false
             clipToPadding = false
         }
-        val swatchViews = ArrayList<Pair<Int, View>>()
-        Themes.ACCENTS.forEachIndexed { idx, spec ->
-            val col = spec.color
-            val dot = View(ctx).apply {
-                isFocusable = true
-                isClickable = true
-                background = swatchBg(ctx, col, settings.accentColor == col)
-                setOnFocusChangeListener { v, f ->
-                    AnimationController.animateFocus(v, f, settings.motionStyle, 1.12f, 5f)
-                    v.background = swatchBg(ctx, col, f || settings.accentColor == col)
+        val renderMotionGrid: () -> Unit = {
+            val focusedKey = motionContainer.findFocus()?.tag as? String
+            motionContainer.removeAllViews()
+            AnimationController.STYLES.chunked(4).forEach { rowChunk ->
+                val r = LinearLayout(ctx).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    clipChildren = false
+                    clipToPadding = false
                 }
-                setOnClickListener {
-                    settings.accentColor = col
-                    settings.accentName = spec.label
-                    swatchViews.forEach { (c, v) ->
-                        v.background = swatchBg(ctx, c, v.hasFocus() || c == settings.accentColor)
+                rowChunk.forEachIndexed { idx, spec ->
+                    val btnTag = "motion_${spec.key}"
+                    val isSel = settings.motionStyle == spec.key
+                    val btn = TextView(ctx).apply {
+                        tag = btnTag
+                        text = spec.label
+                        textSize = 9.5f
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(Color.WHITE)
+                        gravity = Gravity.CENTER
+                        isFocusable = true
+                        isClickable = true
+                        background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, isSel, settings.tileColor)
+                        setOnFocusChangeListener { v, f ->
+                            AnimationController.animateFocus(v, f, settings.motionStyle, 1.03f, 3f)
+                            v.background = PanelSurfaceKit.glassCardBg(
+                                ctx, settings.accentColor, f || settings.motionStyle == spec.key, settings.tileColor
+                            )
+                        }
+                        setOnClickListener { v ->
+                            settings.motionStyle = spec.key
+                            val hostPanel = (panel.parent?.parent as? View) ?: panel
+                            AnimationController.playDemoPreview(hostPanel, spec.key)
+                            v.post { if (v.isAttachedToWindow) v.requestFocus() }
+                        }
                     }
+                    r.addView(btn, LinearLayout.LayoutParams(0, dp(ctx, 34), 1f).apply {
+                        if (idx < rowChunk.lastIndex) rightMargin = dp(ctx, 5)
+                    })
                 }
+                motionContainer.addView(r, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 5) })
             }
-            swatchViews.add(col to dot)
-            swatchRow.addView(dot, LinearLayout.LayoutParams(0, dp(ctx, 32), 1f).apply {
-                if (idx < Themes.ACCENTS.lastIndex) rightMargin = dp(ctx, 6)
-            })
+            if (focusedKey != null) {
+                motionContainer.findViewWithTag<View>(focusedKey)?.requestFocus()
+            }
         }
-        panel.addView(swatchRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 6) })
+        renderMotionGrid()
+        settings.addStyleListener(renderMotionGrid)
+        panel.addView(motionContainer, LinearLayout.LayoutParams(-1, -2))
 
-        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "TILE GLASS PALETTE")
-        Themes.THEMES.chunked(2).forEach { rowChunk ->
-            val row = LinearLayout(ctx).apply {
+        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "ACCENT AURA")
+        val swatchContainer = FrameLayout(ctx).apply {
+            clipChildren = false
+            clipToPadding = false
+        }
+        val renderAccentRow: () -> Unit = {
+            val focusedTag = swatchContainer.findFocus()?.tag as? String
+            swatchContainer.removeAllViews()
+            val swatchRow = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
                 clipChildren = false
                 clipToPadding = false
             }
-            rowChunk.forEachIndexed { idx, theme ->
-                val isSel = settings.tileColor == theme.key
-                val labelTv = TextView(ctx).apply {
-                    text = theme.name.substringBefore(" ")
-                    textSize = 9.5f
-                    typeface = Typeface.DEFAULT_BOLD
-                    isSingleLine = true
-                }
-                val card = LinearLayout(ctx).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
+            Themes.ACCENTS.forEachIndexed { idx, spec ->
+                val col = spec.color
+                val dotTag = "accent_${spec.key}"
+                val dot = View(ctx).apply {
+                    tag = dotTag
+                    contentDescription = spec.label
                     isFocusable = true
                     isClickable = true
+                    background = swatchBg(ctx, col, settings.accentColor == col)
+                    setOnFocusChangeListener { v, f ->
+                        AnimationController.animateFocus(v, f, settings.motionStyle, 1.12f, 5f)
+                        v.background = swatchBg(ctx, col, f || settings.accentColor == col)
+                    }
+                    setOnClickListener { v ->
+                        settings.accentColor = col
+                        settings.accentName = spec.label
+                        v.post { if (v.isAttachedToWindow) v.requestFocus() }
+                    }
+                }
+                swatchRow.addView(dot, LinearLayout.LayoutParams(0, dp(ctx, 32), 1f).apply {
+                    if (idx < Themes.ACCENTS.lastIndex) rightMargin = dp(ctx, 6)
+                })
+            }
+            swatchContainer.addView(swatchRow)
+            if (focusedTag != null) {
+                swatchContainer.findViewWithTag<View>(focusedTag)?.requestFocus()
+            }
+        }
+        renderAccentRow()
+        settings.addStyleListener(renderAccentRow)
+        panel.addView(swatchContainer, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 6) })
 
-                    val syncCard = {
-                        val selNow = settings.tileColor == theme.key
-                        background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, hasFocus() || selNow, settings.tileColor)
-                        labelTv.setTextColor(
-                            if (hasFocus() || selNow) Themes.getAdaptiveTextColor(intArrayOf(settings.accentColor))
+        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "TILE GLASS PALETTE")
+        val themeContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            clipChildren = false
+            clipToPadding = false
+        }
+        val renderThemeGrid: () -> Unit = {
+            val focusedTag = themeContainer.findFocus()?.tag as? String
+            themeContainer.removeAllViews()
+            Themes.THEMES.chunked(2).forEach { rowChunk ->
+                val row = LinearLayout(ctx).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    clipChildren = false
+                    clipToPadding = false
+                }
+                rowChunk.forEachIndexed { idx, theme ->
+                    val cardTag = "theme_${theme.key}"
+                    val isSel = settings.tileColor == theme.key
+                    val labelTv = TextView(ctx).apply {
+                        text = theme.name
+                        textSize = 9.5f
+                        typeface = Typeface.DEFAULT_BOLD
+                        isSingleLine = true
+                        setTextColor(
+                            if (isSel) Themes.getAdaptiveTextColor(intArrayOf(settings.accentColor))
                             else Themes.getPrimaryTextColor(settings.tileColor)
                         )
                     }
-                    syncCard()
-                    settings.addStyleListener(syncCard)
-
-                    setOnFocusChangeListener { v, f ->
-                        AnimationController.animateFocus(v, f, settings.motionStyle, 1.03f, 4f)
-                        syncCard()
+                    val card = LinearLayout(ctx).apply {
+                        tag = cardTag
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
+                        isFocusable = true
+                        isClickable = true
+                        background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, isSel, settings.tileColor)
+                        setOnFocusChangeListener { v, f ->
+                            AnimationController.animateFocus(v, f, settings.motionStyle, 1.03f, 4f)
+                            val active = f || settings.tileColor == theme.key
+                            v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, active, settings.tileColor)
+                            labelTv.setTextColor(
+                                if (active) Themes.getAdaptiveTextColor(intArrayOf(settings.accentColor))
+                                else Themes.getPrimaryTextColor(settings.tileColor)
+                            )
+                        }
+                        setOnClickListener { v ->
+                            settings.tileColor = theme.key
+                            v.post { if (v.isAttachedToWindow) v.requestFocus() }
+                        }
+                        addView(
+                            PanelSurfaceKit.createThemeOrbView(ctx, theme.focusedColors, isSel),
+                            LinearLayout.LayoutParams(dp(ctx, 18), dp(ctx, 18)).apply { rightMargin = dp(ctx, 7) }
+                        )
+                        addView(labelTv)
                     }
-                    setOnClickListener {
-                        settings.tileColor = theme.key
-                    }
-                    addView(
-                        PanelSurfaceKit.createThemeOrbView(ctx, theme.focusedColors, isSel),
-                        LinearLayout.LayoutParams(dp(ctx, 18), dp(ctx, 18)).apply { rightMargin = dp(ctx, 7) }
-                    )
-                    addView(labelTv)
+                    row.addView(card, LinearLayout.LayoutParams(0, dp(ctx, 36), 1f).apply {
+                        if (idx < rowChunk.lastIndex) rightMargin = dp(ctx, 6)
+                    })
                 }
-                row.addView(card, LinearLayout.LayoutParams(0, dp(ctx, 36), 1f).apply {
-                    if (idx < rowChunk.lastIndex) rightMargin = dp(ctx, 6)
-                })
+                themeContainer.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 5) })
             }
-            panel.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 8) })
+            if (focusedTag != null) {
+                themeContainer.findViewWithTag<View>(focusedTag)?.requestFocus()
+            }
         }
+        renderThemeGrid()
+        settings.addStyleListener(renderThemeGrid)
+        panel.addView(themeContainer, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 8) })
     }
 
-    // Walks up the view hierarchy to locate ClockWeatherCardDesign without duplicating dialog code.
+    // Walks the view hierarchy dynamically to locate ClockWeatherCardDesign without coupling.
     private fun findClockWidgetInHierarchy(start: View): ClockWeatherCardDesign? {
-        var cur: View? = start.rootView
         fun search(v: View?): ClockWeatherCardDesign? {
             if (v == null) return null
             if (v is ClockWeatherCardDesign) return v
@@ -310,10 +351,10 @@ object StyleCustomizePanel {
             }
             return null
         }
-        return search(cur)
+        return search(start.rootView)
     }
 
-    // Shows a dialog to enter or reset a custom greeting phrase using dedicated dialog buttons.
+    // Opens a dialog to set or clear a custom greeting phrase.
     private fun showGreetingDialog(
         ctx: Context,
         settings: AppSettings,
@@ -342,7 +383,7 @@ object StyleCustomizePanel {
         })
         val input = EditText(ctx).apply {
             isSingleLine = true
-            hint = "Leave blank for Auto (e.g. Movie Night)"
+            hint = "Custom phrase"
             setText(settings.greetingPhrase)
             setTextColor(Color.WHITE)
             setHintTextColor(Color.argb(150, 200, 220, 245))
@@ -357,7 +398,7 @@ object StyleCustomizePanel {
         box.addView(input, LinearLayout.LayoutParams(dp(ctx, 310), -2))
         val btnRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         btnRow.addView(
-            makeDialogButton(ctx, settings, "↺  Auto Reset", false) {
+            makeDialogButton(ctx, settings, "↺  Auto", false) {
                 settings.greetingPhrase = ""
                 onLiveRefresh()
                 onRefreshPanel()
