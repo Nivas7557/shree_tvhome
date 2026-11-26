@@ -10,7 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.SeekBar
 
-object FocusRouter {
+object MoodPresets {
 
     // Finds the first visible, enabled, non-touch-only focusable view in a subtree without requesting focus.
     fun findFirstFocusable(root: View): View? {
