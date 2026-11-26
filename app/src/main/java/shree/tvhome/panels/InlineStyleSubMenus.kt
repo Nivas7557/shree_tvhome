@@ -73,7 +73,6 @@ object InlineStyleSubMenus {
                 )
             }
         }
-
         options.chunked(cols).forEach { rowItems ->
             val row = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -113,7 +112,6 @@ object InlineStyleSubMenus {
         }
         refreshButtons()
     }
-
     // Populates pure circular gradient swatches with dynamic column count from Themes.MIN_SWATCH_ORB_DP.
     fun populateAccentSwatches(
         ctx: Context,
@@ -131,7 +129,6 @@ object InlineStyleSubMenus {
         )
         val swatches = ArrayList<View>()
         val syncSwatches: () -> Unit = { swatches.forEach { it.invalidate() } }
-
         Themes.ACCENTS.chunked(cols).forEach { rowSpecs ->
             val row = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -154,7 +151,6 @@ object InlineStyleSubMenus {
                             spec.gradientColors, null, Shader.TileMode.CLAMP
                         )
                         canvas.drawCircle(cx, cy, r, fillPaint)
-
                         val active = hasFocus() || settings.accentColor == spec.color
                         ringPaint.strokeWidth = LayoutMetrics.dpF(context, if (active) 2.4f else 1f)
                         ringPaint.color = if (active) Color.WHITE else Color.argb(120, 255, 255, 255)
@@ -218,17 +214,12 @@ object InlineStyleSubMenus {
                 )
             }
         }
-
         AnimationController.STYLES.chunked(cols).forEach { rowChunk ->
             val r = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
                 clipChildren = false
                 clipToPadding = false
             }
-            rowChunk.forEachIndexed { idx, spec ->
-                val btn = TextView(ctx).apply {
-                    tag = "motion_${spec.key}"
-                    text = spec.label
             rowChunk.forEachIndexed { idx, spec ->
                 val btn = TextView(ctx).apply {
                     tag = "motion_${spec.key}"
@@ -283,7 +274,6 @@ object InlineStyleSubMenus {
         )
         val orbs = ArrayList<View>()
         val syncOrbs: () -> Unit = { orbs.forEach { it.invalidate() } }
-
         Themes.THEMES.chunked(cols).forEach { rowChunk ->
             val row = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -306,7 +296,6 @@ object InlineStyleSubMenus {
                             theme.focusedColors, null, Shader.TileMode.CLAMP
                         )
                         canvas.drawCircle(cx, cy, r, fillPaint)
-
                         val active = hasFocus() || settings.tileColor == theme.key
                         ringPaint.strokeWidth = LayoutMetrics.dpF(context, if (active) 2.4f else 1f)
                         ringPaint.color = if (active) Color.WHITE else Color.argb(125, 255, 255, 255)
@@ -341,4 +330,3 @@ object InlineStyleSubMenus {
         return syncOrbs
     }
 }
-    }
