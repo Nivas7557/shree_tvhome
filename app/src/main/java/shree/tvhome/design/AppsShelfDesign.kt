@@ -61,8 +61,9 @@ object AppsShelfDesign {
         val colCount = ((availableW + gap) / (desiredTilePx + gap)).coerceIn(colRange.first, colRange.last)
         val cellW = maxOf(1, (availableW - (gap * (colCount - 1))) / colCount)
         val tileW = maxOf(1, (cellW * 0.94f).toInt())
-        val extraNameplateH = dp(ctx, 28)
-        val tileH = maxOf(1, (tileW * 0.86f).toInt() + extraNameplateH)
+        val extraNameplateH = dp(ctx, 24)
+        // Use 16:10 TV banner card proportion so app tiles look like authentic Android TV cards.
+        val tileH = maxOf(1, (tileW * 0.62f).toInt() + extraNameplateH)
         val sideMargin = maxOf(0, (cellW - tileW) / 2)
 
         return ShelfGeometry(colCount, gap, cellW, tileW, tileH, sideMargin)
