@@ -1,3 +1,8 @@
+// Important instructions:
+// - Single source of truth for repositories and root project name.
+// - No hardcoded local paths or forced repository overrides.
+
+// Configure plugin resolution sources for Gradle plugins.
 pluginManagement {
     repositories {
         google()
@@ -6,6 +11,7 @@ pluginManagement {
     }
 }
 
+// Enforce centralized dependency repository management across the project.
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -14,5 +20,6 @@ dependencyResolutionManagement {
     }
 }
 
+// Define root project name and include the application module.
 rootProject.name = "shree_tvhome"
 include(":app")
