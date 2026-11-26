@@ -1,6 +1,6 @@
 // Important instructions:
-// - Structure the home screen into proportional bands: TopHeader (~12%), Favorites (~24%), and Glossy App Shelf (~64%).
-// - Render a thick, shining rounded glass container for the App Shelf with a top control ribbon and center-locked fading rows.
+// - Structure the home screen into proportional bands: TopHeader, Favorites, and Transparent Glossy-Rim App Shelf.
+// - Render a thick luminous gradient rim with zero interior fill, a glossy top control ribbon, and center-locked rows.
 
 package shree.tvhome
 
@@ -60,13 +60,11 @@ class HomeScreen(
         val hPad = LayoutMetrics.screenHorizontalPadding(context)
         val vPad = LayoutMetrics.screenVerticalPadding(context)
         val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.056f, minDp = 36, maxDp = 50, horizontal = false)
-        // Reserve proportional top clearance so the circular avatar never clips at the top screen edge.
         val topClearance = maxOf(vPad, (barHeight * 0.66f).toInt())
         val bandGap = LayoutMetrics.dynamicSpace(context, ratio = 0.014f, minDp = 8, maxDp = 18, horizontal = false)
 
         setPadding(hPad, topClearance, hPad, vPad / 2)
 
-        // Band 1 (~12%): Top navigation and profile header bar.
         topBar = TopHeaderBar(context, settings, callbacks)
         addView(topBar, LayoutParams(-1, barHeight).apply { bottomMargin = bandGap })
 
@@ -83,7 +81,6 @@ class HomeScreen(
         }
         contentArea.addView(bodyContainer, FrameLayout.LayoutParams(-1, -1))
 
-        // Optional Hidden Apps management ribbon.
         val ribbonPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 18, horizontal = true)
         val ribbonPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.008f, minDp = 6, maxDp = 12, horizontal = false)
         hiddenSection = LinearLayout(context).apply {
@@ -139,7 +136,6 @@ class HomeScreen(
         hiddenSection.addView(hiddenHScroll)
         bodyContainer.addView(hiddenSection, LayoutParams(-1, -2).apply { bottomMargin = bandGap })
 
-        // Band 2 (~24%): Favorites & Quick Access ribbon.
         favSection = LinearLayout(context).apply {
             orientation = VERTICAL
             clipChildren = false
@@ -164,12 +160,11 @@ class HomeScreen(
         favHScroll.addView(favRow)
         favSection.addView(favHScroll)
         bodyContainer.addView(favSection, LayoutParams(-1, -2).apply { bottomMargin = bandGap })
-        // Band 3 (~64%): Glossy outer glass App Shelf with thick shining rounded edges & center-locked rows.
         val shelfPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 18, horizontal = true)
         val shelfPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.010f, minDp = 8, maxDp = 14, horizontal = false)
 
+        // Transparent App Shelf with thick luminous gradient rounding rim (Google TV / YouTube style).
         val glossyShelfBox = object : LinearLayout(context) {
-            private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
             private val rimOuterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
             private val rimInnerSheenPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
             private val boxRect = RectF()
@@ -179,44 +174,40 @@ class HomeScreen(
                 val w = width.toFloat()
                 val h = height.toFloat()
                 if (w <= 0f || h <= 0f) return
-                val strokeW = LayoutMetrics.dpF(context, 2.2f)
+
+                val strokeW = (minOf(w, h) * 0.012f).coerceIn(LayoutMetrics.dpF(context, 2.5f), LayoutMetrics.dpF(context, 5.5f))
                 val halfStroke = strokeW / 2f
-                val cornerR = LayoutMetrics.dpF(context, 22f)
+                val cornerR = LayoutMetrics.dpF(context, 24f)
 
                 boxRect.set(halfStroke, halfStroke, w - halfStroke, h - halfStroke)
-                val glassCols = Themes.getGlassPanelColors(settings.tileColor, settings.accentColor, elevated = false)
-                fillPaint.shader = LinearGradient(
-                    0f, 0f, w * 0.45f, h,
-                    intArrayOf(
-                        LayoutMetrics.withAlpha(glassCols.first(), 168),
-                        LayoutMetrics.withAlpha(glassCols.last(), 196)
-                    ),
-                    null,
-                    Shader.TileMode.CLAMP
-                )
-                canvas.drawRoundRect(boxRect, cornerR, cornerR, fillPaint)
+                val accentSpec = Themes.getAccentSpec(settings.accentColor, settings.accentName)
+                val c1 = accentSpec.gradientColors.firstOrNull() ?: settings.accentColor
+                val c2 = accentSpec.gradientColors.lastOrNull() ?: settings.accentColor
 
-                // Thick shining outer edge gradient blending accent glow with crisp specular white.
                 rimOuterPaint.strokeWidth = strokeW
                 rimOuterPaint.shader = LinearGradient(
                     0f, 0f, w, h,
                     intArrayOf(
-                        Color.argb(215, 255, 255, 255),
-                        LayoutMetrics.withAlpha(settings.accentColor, 210),
-                        Color.argb(110, 255, 255, 255),
-                        LayoutMetrics.withAlpha(settings.accentColor, 225)
+                        Color.argb(230, 255, 255, 255),
+                        LayoutMetrics.withAlpha(c1, 235),
+                        Color.argb(145, 255, 255, 255),
+                        LayoutMetrics.withAlpha(c2, 235)
                     ),
-                    floatArrayOf(0f, 0.35f, 0.70f, 1f),
+                    floatArrayOf(0f, 0.34f, 0.68f, 1f),
                     Shader.TileMode.CLAMP
                 )
                 canvas.drawRoundRect(boxRect, cornerR, cornerR, rimOuterPaint)
 
-                // Subtle inner glossy bevel highlight just inside the thick outer edge.
-                val inset = strokeW + LayoutMetrics.dpF(context, 1.2f)
+                val inset = strokeW + LayoutMetrics.dpF(context, 1f)
                 innerRect.set(inset, inset, w - inset, h - inset)
-                rimInnerSheenPaint.strokeWidth = LayoutMetrics.dpF(context, 1f)
-                rimInnerSheenPaint.color = Color.argb(72, 255, 255, 255)
-                canvas.drawRoundRect(innerRect, (cornerR - inset).coerceAtLeast(4f), (cornerR - inset).coerceAtLeast(4f), rimInnerSheenPaint)
+                rimInnerSheenPaint.strokeWidth = LayoutMetrics.dpF(context, 0.9f)
+                rimInnerSheenPaint.color = Color.argb(85, 255, 255, 255)
+                canvas.drawRoundRect(
+                    innerRect,
+                    (cornerR - inset).coerceAtLeast(4f),
+                    (cornerR - inset).coerceAtLeast(4f),
+                    rimInnerSheenPaint
+                )
 
                 super.onDraw(canvas)
             }
@@ -229,24 +220,32 @@ class HomeScreen(
         }
         settings.addStyleListener { glossyShelfBox.invalidate() }
 
-        // Top control ribbon inside the glossy shelf (~5% screen band: All Apps, A-Z Order, App Count).
+        // Top glossy filled control ribbon inside the transparent rim box.
         val allHeader = AppsShelfDesign.createHeader(
             context, "⊞  ALL APPS", isFavoritesRow = false, settings = settings, onSortChanged = onSortChanged
-        )
-        allCount = allHeader.findViewWithTag("count_tv")
-        glossyShelfBox.addView(allHeader, LayoutParams(-1, -2))
-
-        // Subtle luminous divider separating the top control ribbon from the 3-band app viewport.
-        val divider = View(context).apply {
-            background = GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.TRANSPARENT, Color.argb(95, 255, 255, 255), Color.TRANSPARENT)
-            )
+        ).apply {
+            val rPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 16, horizontal = true)
+            val rPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.007f, minDp = 5, maxDp = 10, horizontal = false)
+            setPadding(rPadH, rPadV, rPadH, rPadV)
+            val syncRibbonBg = {
+                val glassCols = Themes.getGlassPanelColors(settings.tileColor, settings.accentColor, elevated = true)
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(
+                        LayoutMetrics.withAlpha(glassCols.first(), 215),
+                        LayoutMetrics.withAlpha(glassCols.last(), 230)
+                    )
+                ).apply {
+                    cornerRadius = LayoutMetrics.dpF(context, 14f)
+                    setStroke(LayoutMetrics.dp(context, 1), LayoutMetrics.withAlpha(settings.accentColor, 175))
+                }
+            }
+            syncRibbonBg()
+            settings.addStyleListener(syncRibbonBg)
         }
-        glossyShelfBox.addView(divider, LayoutParams(-1, LayoutMetrics.dp(context, 1)).apply {
-            topMargin = shelfPadV / 3
-            bottomMargin = shelfPadV / 2
-        })
+        allCount = allHeader.findViewWithTag("count_tv")
+        glossyShelfBox.addView(allHeader, LayoutParams(-1, -2).apply { bottomMargin = shelfPadV / 2 })
+
         // Non-focusable Leanback-style center-locked viewport with active-row highlight and neighbor dimming.
         val fadeEdgeLen = LayoutMetrics.dynamicSpace(context, ratio = 0.065f, minDp = 32, maxDp = 64, horizontal = false)
         val scroll = object : ScrollView(context) {
@@ -280,7 +279,6 @@ class HomeScreen(
         glossyShelfBox.addView(scroll, LayoutParams(-1, 0, 1f))
         bodyContainer.addView(glossyShelfBox, LayoutParams(-1, 0, 1f))
 
-        // Highlight the active focused row at 100% brightness while smoothly fading above and below rows.
         val applyLeanbackRowFocusVisuals: (Int) -> Unit = { activeRow ->
             val grid = appGrid.findViewWithTag<SpatialGridDesign>("spatial_engine")
             if (grid != null && grid.columns > 0) {
@@ -312,7 +310,6 @@ class HomeScreen(
             LiveBackdrop.onScrollParallax(scroll.scrollY)
         }
 
-        // Keep top/bottom scroll buffers equal to half-viewport minus half-row so every row locks to exact center.
         scroll.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
             val vpH = bottom - top
             val grid = appGrid.findViewWithTag<SpatialGridDesign>("spatial_engine")
@@ -330,7 +327,6 @@ class HomeScreen(
             }
         }
 
-        // Lock the focused row into the fixed center focus line with silky row-by-row elevator motion.
         scroll.viewTreeObserver.addOnGlobalFocusChangeListener(
             ViewTreeObserver.OnGlobalFocusChangeListener { _, newFocus ->
                 val grid = appGrid.findViewWithTag<SpatialGridDesign>("spatial_engine")
@@ -358,3 +354,55 @@ class HomeScreen(
             }
         )
     }
+
+    private fun isDescendantOf(targetView: View, container: View): Boolean {
+        var parent = targetView.parent
+        while (parent != null) {
+            if (parent === container) return true
+            parent = parent.parent
+        }
+        return false
+    }
+
+    // Reserves right-side stage width proportionally so app tiles stay clear of the widget/drawer.
+    fun setRightStageInset(rightStageWidthPx: Int) {
+        val gap = LayoutMetrics.dynamicSpace(context, ratio = 0.018f, minDp = 12, maxDp = 30, horizontal = true)
+        bodyContainer.setPadding(0, 0, rightStageWidthPx + gap, 0)
+    }
+
+    // Returns whether the hidden apps ribbon is currently visible.
+    fun isHiddenRibbonVisible(): Boolean = hiddenSection.visibility == View.VISIBLE
+
+    // Populates and animates open the hidden apps ribbon.
+    fun openHiddenRibbon(onUnhideApp: (String, String) -> Unit) {
+        AppsShelfDesign.populateHiddenRibbon(context, settings, hiddenSection, hiddenRow, hiddenCount, onUnhideApp)
+        if (hiddenSection.visibility == View.VISIBLE) {
+            hiddenSection.alpha = 0f
+            hiddenSection.scaleY = 0.90f
+            hiddenSection.animate()
+                .alpha(1f).scaleY(1f)
+                .setDuration(300L)
+                .setInterpolator(LayoutMetrics.FLUID_SPRING)
+                .start()
+        }
+    }
+
+    // Animates closed the hidden apps ribbon and notifies the caller to refresh focus/grid.
+    fun closeHiddenRibbon(focusPkg: String? = null) {
+        if (hiddenSection.visibility != View.VISIBLE) return
+        hiddenSection.animate()
+            .alpha(0f).scaleY(0.90f)
+            .setDuration(220L)
+            .setInterpolator(LayoutMetrics.SILKY_EASE)
+            .withEndAction {
+                hiddenSection.visibility = View.GONE
+                hiddenSection.alpha = 1f
+                hiddenSection.scaleY = 1f
+                onHiddenRibbonClosed(focusPkg)
+            }
+            .start()
+    }
+
+    // Scales a base dp integer into display-proportional pixels.
+    private fun dp(value: Int): Int = LayoutMetrics.dp(context, value)
+}
