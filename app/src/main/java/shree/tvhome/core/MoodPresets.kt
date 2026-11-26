@@ -32,15 +32,15 @@ object MoodPresets {
         val sceneKey: String
     )
 
-    // Four fresh mood presets; add/edit/remove here to update cards automatically.
+    // Four fresh mood presets; add/edit/remove here to update cards automatically across the launcher.
     val PRESETS: List<MoodPreset> = listOf(
         MoodPreset("velvet_cinema", "🎬", "Velvet Cinema", "dark", "ember", "silk", LiveBackdrop.MODE_SUNSET),
         MoodPreset("neon_pulse", "⚡", "Neon Pulse", "cyber", "orchid", "jelly", LiveBackdrop.MODE_PASTEL),
         MoodPreset("emerald_zen", "🌿", "Emerald Zen", "emerald", "meadow", "levitate", LiveBackdrop.MODE_MORNING),
-        MoodPreset("solar_horizon", "🌅", "Solar Horizon", "ocean", "solar", "flip3d", LiveBackdrop.MODE_AQUA)
+        MoodPreset("solar_horizon", "🌊", "Solar Horizon", "ocean", "solar", "flip3d", LiveBackdrop.MODE_AQUA)
     )
 
-    // Builds a 2x2 dynamic grid of preset cards with mini live previews and zero hardcoded paddings.
+    // Builds a 2x2 dynamic grid of preset cards with mini live previews and screen-scaled spacing.
     fun buildPresetCards(
         ctx: Context,
         settings: AppSettings,
@@ -52,11 +52,12 @@ object MoodPresets {
             clipToPadding = false
         }
 
-        val committedTheme = settings.tileColor
-        val committedAccent = settings.accentColor
-        val committedAccentName = settings.accentName
-        val committedMotion = settings.motionStyle
-        val committedScene = settings.liveWallpaperMode
+        // Capture committed values so unconfirmed focus previews revert cleanly.
+        var committedTheme = settings.tileColor
+        var committedAccent = settings.accentColor
+        var committedAccentName = settings.accentName
+        var committedMotion = settings.motionStyle
+        var committedScene = settings.liveWallpaperMode
 
         val cardUpdaters = CopyOnWriteArrayList<() -> Unit>()
         val refreshAllCards: () -> Unit = {
@@ -82,7 +83,7 @@ object MoodPresets {
                 val presetAccentSpec = Themes.getAccentSpec(presetAccent, preset.accentKey)
                 val presetScene = LiveBackdrop.getScene(preset.sceneKey)
 
-                // Mini preview drawn directly on the preset card showing sky scene and gradient accent strip.
+                // Draws a live mini swatch showing the scene sky gradient and accent bar.
                 val miniPreview = object : View(ctx) {
                     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
                     private val stripPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -154,13 +155,18 @@ object MoodPresets {
                 cardUpdaters.add(syncCard)
                 syncCard()
 
-                // Preview on focus without saving; revert if focus leaves without click/OK.
+                // Preview on focus without committing; restore all committed tokens on unfocus.
                 card.setOnFocusChangeListener { v, f ->
                     AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 4f)
                     if (f) {
                         applyPreset(settings, preset)
                         onLiveRefresh()
-                    } else if (settings.liveWallpaperMode != committedScene || settings.tileColor != committedTheme) {
+                    } else if (
+                        settings.liveWallpaperMode != committedScene ||
+                        settings.tileColor != committedTheme ||
+                        settings.accentColor != committedAccent ||
+                        settings.motionStyle != committedMotion
+                    ) {
                         settings.tileColor = committedTheme
                         settings.accentColor = committedAccent
                         settings.accentName = committedAccentName
@@ -170,35 +176,36 @@ object MoodPresets {
                     }
                     syncCard()
                 }
-
-                // Commit preset permanently only on click/OK.
+                // Commit preset permanently on click/OK and update committed baseline.
                 card.setOnClickListener {
                     applyPreset(settings, preset)
+                    committedTheme = settings.tileColor
+                    committedAccent = settings.accentColor
+                    committedAccentName = settings.accentName
+                    committedMotion = settings.motionStyle
+                    committedScene = settings.liveWallpaperMode
                     onLiveRefresh()
                     refreshAllCards()
                     Toast.makeText(ctx, "${preset.title} Mood Set", Toast.LENGTH_SHORT).show()
                 }
-
                 card.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
                     override fun onViewAttachedToWindow(v: View) {}
                     override fun onViewDetachedFromWindow(v: View) {
                         cardUpdaters.remove(syncCard)
+                        settings.removeStyleListener(refreshAllCards)
                     }
                 })
-
                 row.addView(card, LinearLayout.LayoutParams(0, -2, 1f).apply {
                     if (colIdx < pair.lastIndex) rightMargin = hGap
                 })
             }
-
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
                 if (rowIdx < PRESETS.chunked(2).lastIndex) bottomMargin = vGap
             })
         }
-
         return container
     }
-
+    // Applies all visual tokens defined by a MoodPreset to AppSettings.
     private fun applyPreset(settings: AppSettings, preset: MoodPreset) {
         settings.tileColor = preset.tileTheme
         settings.accentColor = Themes.getAccentByName(preset.accentKey)
@@ -207,4 +214,3 @@ object MoodPresets {
         settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
         settings.liveWallpaperMode = preset.sceneKey
     }
-}
