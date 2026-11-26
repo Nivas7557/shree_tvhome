@@ -51,12 +51,13 @@ class HomeScreen(
 
         val hPad = LayoutMetrics.screenHorizontalPadding(context)
         val vPad = LayoutMetrics.screenVerticalPadding(context)
-        val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.052f, minDp = 34, maxDp = 46, horizontal = false)
-        // Avatar diameter is ~2.25x barHeight, so give generous proportional top and bottom clearance around TopHeaderBar.
+        val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.050f, minDp = 32, maxDp = 44, horizontal = false)
+        // Avatar diameter is 2.25x barHeight (extends 0.625x above and 0.625x below barHeight); add proportional safety margin.
         val topAvatarPad = maxOf(vPad, (barHeight * 0.72f).toInt())
-        val bottomAvatarGap = maxOf(LayoutMetrics.dynamicSpace(context, ratio = 0.018f, minDp = 12, maxDp = 24, horizontal = false), (barHeight * 0.58f).toInt())
-        val bandGap = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 8, maxDp = 16, horizontal = false)
+        val bottomAvatarGap = (barHeight * 0.74f).toInt()
+        val bandGap = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 8, maxDp = 14, horizontal = false)
 
+        // Match bottom padding with PanelHub's bottomMargin so App Shelf and Side Panel bottom edges align identically.
         setPadding(hPad, topAvatarPad, hPad, vPad / 2)
 
         topBar = TopHeaderBar(context, settings, callbacks)
