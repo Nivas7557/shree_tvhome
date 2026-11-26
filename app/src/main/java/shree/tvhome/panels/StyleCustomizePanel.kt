@@ -1,6 +1,6 @@
 // Important instructions:
-// - Reference mood presets from MoodPresets so adding/deleting/modifying presets updates UI automatically.
-// - Update controls in-place on preset selection so focus stays inside the panel instead of jumping to TopHeaderBar.
+// - Reference mood presets from MoodPresets and clock/location options from Themes (single source of truth).
+// - Add Widget Style and Location Mode (Automatic / Manual) controls with D-Pad manual location selector.
 
 package shree.tvhome.panels
 
@@ -22,10 +22,11 @@ import shree.tvhome.core.AppSettings
 import shree.tvhome.core.LayoutMetrics
 import shree.tvhome.core.MoodPresets
 import shree.tvhome.core.Themes
+import shree.tvhome.design.ClockWeatherCardDesign
 
 object StyleCustomizePanel {
 
-    // Builds all customization sections inside the target panel container.
+    // Builds all customization controls including Widget Style and Location Mode.
     fun build(
         ctx: Context,
         panel: LinearLayout,
@@ -40,6 +41,54 @@ object StyleCustomizePanel {
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "ONE-TAP MOOD PRESETS")
         val moodRow = MoodPresets.buildPresetCards(ctx, settings, onLiveRefresh)
         panel.addView(moodRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 6) })
+
+        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "WIDGET STYLE")
+        PanelSurfaceKit.addSegmentedTrack(
+            ctx, panel, settings,
+            options = Themes.CLOCK_STYLES.map { it.key to it.label },
+            getSelected = { settings.clockStyle },
+            onSelect = { key ->
+                settings.clockStyle = key
+                onLiveRefresh()
+            }
+        )
+
+        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "LOCATION MODE (AUTO / MANUAL)")
+        PanelSurfaceKit.addSegmentedTrack(
+            ctx, panel, settings,
+            options = Themes.LOCATION_MODES.map { it.key to it.label },
+            getSelected = { settings.locationMode },
+            onSelect = { key ->
+                settings.locationMode = key
+                if (key == "auto") {
+                    settings.weatherCity = ""
+                    settings.prefs.edit()
+                        .remove(AppSettings.PREF_SAVED_LAT)
+                        .remove(AppSettings.PREF_SAVED_LON)
+                        .remove(AppSettings.PREF_CACHED_CITY)
+                        .apply()
+                }
+                onLiveRefresh()
+            }
+        )
+
+        val currentCityLabel = settings.weatherCity.ifBlank {
+            settings.prefs.getString(AppSettings.PREF_CACHED_CITY, "Automatic") ?: "Automatic"
+        }
+        panel.addView(
+            PanelSurfaceKit.makeActionRow(
+                ctx, settings, "📍", "Select Manual City (D-Pad)",
+                if (settings.locationMode == "manual") "Manual: $currentCityLabel" else "Auto ($currentCityLabel) • Tap for Manual"
+            ) {
+                val stageClock = findClockWidgetInHierarchy(panel)
+                if (stageClock != null) {
+                    stageClock.showLocationSelectorDialog()
+                } else {
+                    showGreetingDialog(ctx, settings, onLiveRefresh, onRefreshPanel)
+                }
+            },
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 6) }
+        )
 
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "ACCOUNT & VISIBILITY")
         val topRow = LinearLayout(ctx).apply {
@@ -65,10 +114,7 @@ object StyleCustomizePanel {
         val greetSub = settings.greetingPhrase.ifBlank { "Auto time-based greeting" }
         panel.addView(
             PanelSurfaceKit.makeActionRow(ctx, settings, "💬", "Custom Greeting Status", greetSub) {
-                showGreetingDialog(ctx, settings) {
-                    onLiveRefresh()
-                    onRefreshPanel()
-                }
+                showGreetingDialog(ctx, settings, onLiveRefresh, onRefreshPanel)
             },
             LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(ctx, 6) }
         )
@@ -250,8 +296,30 @@ object StyleCustomizePanel {
         }
     }
 
+    // Walks up the view hierarchy to locate ClockWeatherCardDesign without duplicating dialog code.
+    private fun findClockWidgetInHierarchy(start: View): ClockWeatherCardDesign? {
+        var cur: View? = start.rootView
+        fun search(v: View?): ClockWeatherCardDesign? {
+            if (v == null) return null
+            if (v is ClockWeatherCardDesign) return v
+            if (v is android.view.ViewGroup) {
+                for (i in 0 until v.childCount) {
+                    val found = search(v.getChildAt(i))
+                    if (found != null) return found
+                }
+            }
+            return null
+        }
+        return search(cur)
+    }
+
     // Shows a dialog to enter or reset a custom greeting phrase using dedicated dialog buttons.
-    private fun showGreetingDialog(ctx: Context, settings: AppSettings, onSaved: () -> Unit) {
+    private fun showGreetingDialog(
+        ctx: Context,
+        settings: AppSettings,
+        onLiveRefresh: () -> Unit,
+        onRefreshPanel: () -> Unit
+    ) {
         val dialog = Dialog(ctx)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val box = LinearLayout(ctx).apply {
@@ -291,7 +359,8 @@ object StyleCustomizePanel {
         btnRow.addView(
             makeDialogButton(ctx, settings, "↺  Auto Reset", false) {
                 settings.greetingPhrase = ""
-                onSaved()
+                onLiveRefresh()
+                onRefreshPanel()
                 dialog.dismiss()
             },
             LinearLayout.LayoutParams(0, dp(ctx, 40), 1f).apply { rightMargin = dp(ctx, 8) }
@@ -299,7 +368,8 @@ object StyleCustomizePanel {
         btnRow.addView(
             makeDialogButton(ctx, settings, "✓  Save", true) {
                 settings.greetingPhrase = input.text.toString().trim()
-                onSaved()
+                onLiveRefresh()
+                onRefreshPanel()
                 dialog.dismiss()
             },
             LinearLayout.LayoutParams(0, dp(ctx, 40), 1f)
