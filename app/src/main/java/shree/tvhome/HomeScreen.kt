@@ -170,7 +170,9 @@ class HomeScreen(
         }
         favHScroll.addView(favRow)
         favSection.addView(favHScroll)
-        bodyContainer.addView(favSection, LayoutParams(-1, -2).apply { bottomMargin = bandGap })
+        // Keep Favorites ribbon compact (~20% proportional height) cleanly below the circular avatar.
+        val favBandMaxH = LayoutMetrics.dynamicSpace(context, ratio = 0.21f, minDp = 118, maxDp = 168, horizontal = false)
+        bodyContainer.addView(favSection, LayoutParams(-1, favBandMaxH).apply { bottomMargin = bandGap })
 
         val shelfPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 18, horizontal = true)
         val shelfPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.010f, minDp = 8, maxDp = 14, horizontal = false)
