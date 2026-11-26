@@ -247,9 +247,8 @@ class HomeScreen(
             topMargin = shelfPadV / 3
             bottomMargin = shelfPadV / 2
         })
-
-        // Non-focusable center-locking viewport showing upper faded row, center focus row, and lower faded row.
-        val fadeEdgeLen = LayoutMetrics.dynamicSpace(context, ratio = 0.055f, minDp = 28, maxDp = 52, horizontal = false)
+        // Non-focusable Leanback-style center-locked viewport with active-row highlight and neighbor dimming.
+        val fadeEdgeLen = LayoutMetrics.dynamicSpace(context, ratio = 0.065f, minDp = 32, maxDp = 64, horizontal = false)
         val scroll = object : ScrollView(context) {
             override fun requestChildRectangleOnScreen(child: View, rectangle: Rect, immediate: Boolean): Boolean {
                 return false
@@ -281,26 +280,29 @@ class HomeScreen(
         glossyShelfBox.addView(scroll, LayoutParams(-1, 0, 1f))
         bodyContainer.addView(glossyShelfBox, LayoutParams(-1, 0, 1f))
 
-        // Apply linear fade and depth scale to rows above and below the center focus band.
-        val updateRowBandVisuals: () -> Unit = {
+        // Highlight the active focused row at 100% brightness while smoothly fading above and below rows.
+        val applyLeanbackRowFocusVisuals: (Int) -> Unit = { activeRow ->
             val grid = appGrid.findViewWithTag<SpatialGridDesign>("spatial_engine")
-            val vpH = scroll.height.toFloat()
-            if (grid != null && vpH > 0f) {
-                val vpCenterY = scroll.scrollY + (vpH / 2f)
-                val bandRadius = (vpH * 0.46f).coerceAtLeast(1f)
+            if (grid != null && grid.columns > 0) {
                 for (i in 0 until grid.childCount) {
                     val tile = grid.getChildAt(i)
-                    val tileCenterY = scrollContent.paddingTop + tile.y + (tile.height / 2f)
-                    val distRatio = (abs(tileCenterY - vpCenterY) / bandRadius).coerceIn(0f, 1f)
-                    if (tile.hasFocus() || distRatio < 0.18f) {
-                        tile.alpha = 1f
-                        tile.scaleX = 1f
-                        tile.scaleY = 1f
-                    } else {
-                        tile.alpha = (1f - (distRatio * 0.68f)).coerceIn(0.32f, 0.92f)
-                        val depthScale = (1f - (distRatio * 0.06f)).coerceIn(0.94f, 1f)
-                        tile.scaleX = depthScale
-                        tile.scaleY = depthScale
+                    val rowIdx = i / grid.columns
+                    val distRows = abs(rowIdx - activeRow)
+                    val targetAlpha = when {
+                        activeRow < 0 -> if (rowIdx == 0) 1f else 0.48f
+                        distRows == 0 -> 1f
+                        distRows == 1 -> 0.48f
+                        else -> 0.24f
+                    }
+                    val targetScale = if (activeRow >= 0 && distRows == 0) 1f else 0.95f
+                    if (abs(tile.alpha - targetAlpha) > 0.02f) {
+                        tile.animate()
+                            .alpha(targetAlpha)
+                            .scaleX(targetScale)
+                            .scaleY(targetScale)
+                            .setDuration(240L)
+                            .setInterpolator(LayoutMetrics.SILKY_EASE)
+                            .start()
                     }
                 }
             }
@@ -308,96 +310,51 @@ class HomeScreen(
 
         scroll.viewTreeObserver.addOnScrollChangedListener {
             LiveBackdrop.onScrollParallax(scroll.scrollY)
-            updateRowBandVisuals()
         }
 
-        // Keep top/bottom scroll buffers proportional so Row 0 and the last row center cleanly inside the shelf.
+        // Keep top/bottom scroll buffers equal to half-viewport minus half-row so every row locks to exact center.
         scroll.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
             val vpH = bottom - top
             val grid = appGrid.findViewWithTag<SpatialGridDesign>("spatial_engine")
-            val rowH = grid?.tileH ?: LayoutMetrics.dp(context, 96)
+            val rowH = grid?.tileH ?: LayoutMetrics.dp(context, 92)
             if (vpH > 0 && rowH > 0) {
-                val centerBuf = maxOf(shelfPadV, ((vpH - rowH) / 2f).toInt())
-                if (scrollContent.paddingTop != centerBuf || scrollContent.paddingBottom != centerBuf) {
-                    scrollContent.setPadding(0, centerBuf, 0, centerBuf)
+                val centerAnchorPad = maxOf(shelfPadV, ((vpH - rowH) / 2f).toInt())
+                if (scrollContent.paddingTop != centerAnchorPad || scrollContent.paddingBottom != centerAnchorPad) {
+                    scrollContent.setPadding(0, centerAnchorPad, 0, centerAnchorPad)
                 }
-                updateRowBandVisuals()
+                val focusedChild = grid?.findFocus()
+                val activeRow = if (focusedChild != null && grid.columns > 0) {
+                    grid.indexOfChild(focusedChild) / grid.columns
+                } else -1
+                applyLeanbackRowFocusVisuals(activeRow)
             }
         }
 
-        // Glide the focused row into the exact center 25% band on every D-Pad row change.
+        // Lock the focused row into the fixed center focus line with silky row-by-row elevator motion.
         scroll.viewTreeObserver.addOnGlobalFocusChangeListener(
             ViewTreeObserver.OnGlobalFocusChangeListener { _, newFocus ->
-                if (newFocus == null || scroll.height <= 0) return@OnGlobalFocusChangeListener
-                if (!isDescendantOf(newFocus, appGrid)) {
-                    updateRowBandVisuals()
+                val grid = appGrid.findViewWithTag<SpatialGridDesign>("spatial_engine")
+                if (newFocus == null || grid == null || scroll.height <= 0 || !isDescendantOf(newFocus, grid)) {
+                    applyLeanbackRowFocusVisuals(-1)
                     return@OnGlobalFocusChangeListener
                 }
 
-                val tileCenterY = scrollContent.paddingTop + newFocus.y + (newFocus.height / 2f)
-                val viewportCenterY = scroll.height / 2f
+                val childIdx = grid.indexOfChild(newFocus)
+                val cols = grid.columns.coerceAtLeast(1)
+                val activeRow = if (childIdx >= 0) childIdx / cols else 0
+                val rowPitch = grid.tileH + grid.gap
                 val maxScroll = maxOf(0, scrollContent.height - scroll.height)
-                val targetScrollY = (tileCenterY - viewportCenterY).toInt().coerceIn(0, maxScroll)
+                val targetScrollY = (activeRow * rowPitch).coerceIn(0, maxScroll)
 
-                if (abs(scroll.scrollY - targetScrollY) > dp(2)) {
+                if (abs(scroll.scrollY - targetScrollY) > dp(1)) {
                     centerScrollAnim?.cancel()
                     centerScrollAnim = ObjectAnimator.ofInt(scroll, "scrollY", scroll.scrollY, targetScrollY).apply {
-                        duration = 280L
+                        duration = 260L
                         interpolator = LayoutMetrics.SILKY_EASE
                         start()
                     }
                 }
-                updateRowBandVisuals()
+                applyLeanbackRowFocusVisuals(activeRow)
             }
         )
     }
-
-    private fun isDescendantOf(targetView: View, container: View): Boolean {
-        var parent = targetView.parent
-        while (parent != null) {
-            if (parent === container) return true
-            parent = parent.parent
-        }
-        return false
-    }
-
-    fun setRightStageInset(rightStageWidthPx: Int) {
-        val gap = LayoutMetrics.dynamicSpace(context, ratio = 0.018f, minDp = 12, maxDp = 30, horizontal = true)
-        bodyContainer.setPadding(0, 0, rightStageWidthPx + gap, 0)
-    }
-
-    fun isHiddenRibbonVisible(): Boolean = hiddenSection.visibility == View.VISIBLE
-        
-    // Populates and animates open the hidden apps ribbon.
-    fun openHiddenRibbon(onUnhideApp: (String, String) -> Unit) {
-        AppsShelfDesign.populateHiddenRibbon(context, settings, hiddenSection, hiddenRow, hiddenCount, onUnhideApp)
-        if (hiddenSection.visibility == View.VISIBLE) {
-            hiddenSection.alpha = 0f
-            hiddenSection.scaleY = 0.90f
-            hiddenSection.animate()
-                .alpha(1f).scaleY(1f)
-                .setDuration(300L)
-                .setInterpolator(LayoutMetrics.FLUID_SPRING)
-                .start()
-        }
-    }
-
-    // Animates closed the hidden apps ribbon and notifies the caller to refresh focus/grid.
-    fun closeHiddenRibbon(focusPkg: String? = null) {
-        if (hiddenSection.visibility != View.VISIBLE) return
-        hiddenSection.animate()
-            .alpha(0f).scaleY(0.90f)
-            .setDuration(220L)
-            .setInterpolator(LayoutMetrics.SILKY_EASE)
-            .withEndAction {
-                hiddenSection.visibility = View.GONE
-                hiddenSection.alpha = 1f
-                hiddenSection.scaleY = 1f
-                onHiddenRibbonClosed(focusPkg)
-            }
-            .start()
-    }
-
-    // Scales a base dp integer into display-proportional pixels.
-    private fun dp(value: Int): Int = LayoutMetrics.dp(context, value)
-}
