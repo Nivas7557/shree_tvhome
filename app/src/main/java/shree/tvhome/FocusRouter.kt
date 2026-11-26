@@ -1,6 +1,6 @@
 // Important instructions:
-// - Route D-Pad keys reliably across TopHeaderBar and every side panel (Quick, Wi-Fi, Alerts, Power, Customize, Sub-panels).
-// - Enforce horizontal-only navigation inside inline sub-menus so Up/Down cleanly exits to previous/next parent row.
+// - Keep D-Pad routing 100% generic across any number of future top bar buttons, panels, and sub-menus.
+// - Never hardcode panel names, tags, or fixed positions; discover focusable targets dynamically.
 
 package shree.tvhome
 
@@ -9,10 +9,13 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.SeekBar
+import shree.tvhome.panels.InlineStyleSubMenus
 
 object FocusRouter {
 
-    // Finds the first visible, enabled focusable view inside a panel or container.
+    private var lastTopBarFocusedView: View? = null
+
+    // Finds the first visible, enabled focusable child inside any container dynamically.
     fun findFirstFocusable(root: View): View? {
         if (root.visibility != View.VISIBLE || !root.isEnabled) return null
         if (root.isFocusable) return root
@@ -25,7 +28,7 @@ object FocusRouter {
         return null
     }
 
-    // Safely verifies whether targetView is a descendant of container.
+    // Checks dynamically whether targetView resides inside container.
     private fun isDescendantOf(targetView: View?, container: ViewGroup): Boolean {
         var parent = targetView?.parent
         while (parent != null) {
@@ -35,7 +38,7 @@ object FocusRouter {
         return false
     }
 
-    // Finds an ancestor marked as an inline horizontal sub-menu if present.
+    // Discovers dynamically if the currently focused view sits inside any inline horizontal sub-menu.
     private fun findInlineSubMenuAncestor(view: View?): ViewGroup? {
         var parent = view?.parent
         while (parent is View) {
@@ -45,8 +48,8 @@ object FocusRouter {
         return null
     }
 
-    // Maps D-Pad key codes to Android View focus directions.
-    private fun mapKeyToFocusDirection(keyCode: Int): Int? = when (keyCode) {
+    // Maps D-Pad directional keys to Android View focus directions.
+    private fun mapKeyToDirection(keyCode: Int): Int? = when (keyCode) {
         KeyEvent.KEYCODE_DPAD_LEFT -> View.FOCUS_LEFT
         KeyEvent.KEYCODE_DPAD_RIGHT -> View.FOCUS_RIGHT
         KeyEvent.KEYCODE_DPAD_UP -> View.FOCUS_UP
@@ -54,7 +57,7 @@ object FocusRouter {
         else -> null
     }
 
-    // Routes D-Pad keys across topNavBar, open side panels, and horizontal inline sub-menus.
+    // Routes D-Pad keys generically between topNavBar and any open drawerLayout without manual wiring.
     fun handleKeyEvent(
         event: KeyEvent,
         isDrawerOpen: Boolean,
@@ -65,25 +68,25 @@ object FocusRouter {
     ): Boolean {
         if (!isDrawerOpen) return false
 
-        val direction = mapKeyToFocusDirection(event.keyCode) ?: return false
+        val direction = mapKeyToDirection(event.keyCode) ?: return false
         val drawerFocus = drawerLayout.findFocus()
         val inDrawer = drawerFocus != null
-        val current = drawerFocus ?: topNavBar.findFocus()
+        val topFocus = topNavBar.findFocus()
+        if (topFocus != null) lastTopBarFocusedView = topFocus
+        val current = drawerFocus ?: topFocus
 
-        // Allow horizontal sliders (SeekBar or pill_slider) to consume LEFT/RIGHT steps directly.
+        // Let horizontal sliders (SeekBar or pill_slider) consume LEFT/RIGHT adjustments directly.
         if (inDrawer && current != null && (direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT)) {
-            if (current is SeekBar || current.tag == "pill_slider") {
-                return false
-            }
+            if (current is SeekBar || current.tag == "pill_slider") return false
         }
 
         if (event.action != KeyEvent.ACTION_DOWN) return false
 
-        // Cross-region entry: Pressing DPAD_DOWN while on TopHeaderBar jumps directly into the open panel's first item.
+        // Entering drawer from topNavBar (or touch mode) on DPAD_DOWN works automatically for every panel.
         if (!inDrawer && direction == View.FOCUS_DOWN) {
-            val panelFirst = (activePanel?.let { findFirstFocusable(it) }) ?: findFirstFocusable(drawerLayout)
-            if (panelFirst != null) {
-                panelFirst.requestFocus()
+            val target = (activePanel?.let { findFirstFocusable(it) }) ?: findFirstFocusable(drawerLayout)
+            if (target != null) {
+                target.requestFocus()
                 return true
             }
             return false
@@ -91,21 +94,16 @@ object FocusRouter {
 
         if (current == null) return false
 
-        // Inside an inline horizontal sub-menu: allow LEFT/RIGHT only, and delegate UP/DOWN to exit cleanly.
+        // Generic horizontal-only trap for any inline sub-menu; UP/DOWN delegates to its registered exit handler.
         val inlineSubMenu = if (inDrawer) findInlineSubMenuAncestor(current) else null
         if (inlineSubMenu != null) {
             if (direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT) {
                 val nextH = FocusFinder.getInstance().findNextFocus(inlineSubMenu, current, direction)
-                if (nextH != null && nextH !== current) {
-                    nextH.requestFocus()
-                }
+                if (nextH != null && nextH !== current) nextH.requestFocus()
                 return true
             }
             if (direction == View.FOCUS_UP || direction == View.FOCUS_DOWN) {
-                val handler = inlineSubMenu.getTag(R.id.tag_submenu_exit_handler) as? ((Int) -> Boolean)
-                if (handler != null && handler(direction)) {
-                    return true
-                }
+                if (InlineStyleSubMenus.dispatchExit(inlineSubMenu, direction)) return true
             }
         }
 
@@ -115,24 +113,24 @@ object FocusRouter {
             else -> null
         }
 
+        // Let FocusFinder move naturally within the active container whenever a sibling exists.
         if (ownerContainer != null) {
             val nextInRegion = FocusFinder.getInstance().findNextFocus(ownerContainer, current, direction)
-            if (nextInRegion != null && nextInRegion !== current) {
-                return false
-            }
+            if (nextInRegion != null && nextInRegion !== current) return false
         }
 
-        // Pressing DPAD_UP at the top edge of any panel returns focus cleanly to its TopHeaderBar icon.
+        // At top boundary of any open panel, DPAD_UP automatically returns to the last focused top bar button.
         if (inDrawer && direction == View.FOCUS_UP) {
-            val navTarget = if (activeParentTag.isNotEmpty()) topNavBar.findViewWithTag<View>(activeParentTag) else null
-            val fallbackNav = navTarget ?: findFirstFocusable(topNavBar)
-            if (fallbackNav != null) {
-                fallbackNav.requestFocus()
+            val returnTarget = lastTopBarFocusedView?.takeIf { it.isShown && it.isFocusable }
+                ?: (activeParentTag.takeIf { it.isNotEmpty() }?.let { topNavBar.findViewWithTag<View>(it) })
+                ?: findFirstFocusable(topNavBar)
+            if (returnTarget != null) {
+                returnTarget.requestFocus()
                 return true
             }
         }
 
-        // Prevent horizontal edges inside the drawer from escaping into background grids.
+        // Keep horizontal edges inside any panel from escaping into background grids.
         if (inDrawer && (direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT)) {
             return true
         }
