@@ -7,6 +7,14 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+
+// Compute monotonic versionCode and 0.X.Y versionName automatically from GitHub Actions run number.
+def runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+def verMajor = (runNumber.intdiv(100))
+def verMinor = (runNumber.intdiv(10)) % 10
+def verPatch = runNumber % 10
+def autoVersionName = "${verMajor}.${verMinor}.${verPatch}"
+
 // Configure Android TV application SDK levels, Java/Kotlin targets, shrinking, and packaging rules.
 android {
     namespace 'shree.tvhome'
@@ -16,8 +24,8 @@ android {
         applicationId 'shree.tvhome'
         minSdk 23
         targetSdk 34
-        versionCode 1
-        versionName '3.0.0'
+        versionCode runNumber
+        versionName autoVersionName
     }
 
     compileOptions {

@@ -1,6 +1,6 @@
 // Important instructions:
-// - Keep D-Pad routing 100% generic across any number of future top bar buttons, panels, and sub-menus.
-// - Never hardcode panel names, tags, or fixed positions; discover focusable targets dynamically.
+// - Keep D-Pad routing 100% generic across all panels and sub-menus without hardcoded names or tags.
+// - Strictly trap D-Pad Left/Right/Down boundaries inside drawerLayout when open so focus never escapes to background apps.
 
 package shree.tvhome
 
@@ -8,6 +8,7 @@ import android.view.FocusFinder
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewParent
 import android.widget.SeekBar
 import shree.tvhome.panels.InlineStyleSubMenus
 
@@ -30,7 +31,7 @@ object FocusRouter {
 
     // Checks dynamically whether targetView resides inside container.
     private fun isDescendantOf(targetView: View?, container: ViewGroup): Boolean {
-        var parent = targetView?.parent
+        var parent: ViewParent? = targetView?.parent
         while (parent != null) {
             if (parent === container) return true
             parent = parent.parent
@@ -40,7 +41,7 @@ object FocusRouter {
 
     // Discovers dynamically if the currently focused view sits inside any inline horizontal sub-menu.
     private fun findInlineSubMenuAncestor(view: View?): ViewGroup? {
-        var parent: android.view.ViewParent? = view?.parent
+        var parent: ViewParent? = view?.parent
         while (parent != null) {
             if (parent is ViewGroup && parent.tag == "inline_sub_menu") return parent
             parent = parent.parent
@@ -57,7 +58,7 @@ object FocusRouter {
         else -> null
     }
 
-    // Routes D-Pad keys generically between topNavBar and any open drawerLayout without manual wiring.
+    // Routes D-Pad keys generically between topNavBar and drawerLayout while trapping focus inside open panels.
     fun handleKeyEvent(
         event: KeyEvent,
         isDrawerOpen: Boolean,
@@ -82,7 +83,7 @@ object FocusRouter {
 
         if (event.action != KeyEvent.ACTION_DOWN) return false
 
-        // Entering drawer from topNavBar (or touch mode) on DPAD_DOWN works automatically for every panel.
+        // Entering drawer from topNavBar on DPAD_DOWN works automatically for every panel.
         if (!inDrawer && direction == View.FOCUS_DOWN) {
             val target = (activePanel?.let { findFirstFocusable(it) }) ?: findFirstFocusable(drawerLayout)
             if (target != null) {
@@ -113,13 +114,16 @@ object FocusRouter {
             else -> null
         }
 
-        // Let FocusFinder move naturally within the active container whenever a sibling exists.
+        // Move within the active container whenever FocusFinder finds a valid sibling inside it.
         if (ownerContainer != null) {
             val nextInRegion = FocusFinder.getInstance().findNextFocus(ownerContainer, current, direction)
-            if (nextInRegion != null && nextInRegion !== current) return false
+            if (nextInRegion != null && nextInRegion !== current) {
+                nextInRegion.requestFocus()
+                return true
+            }
         }
 
-        // At top boundary of any open panel, DPAD_UP automatically returns to the last focused top bar button.
+        // At top boundary of any open panel, DPAD_UP returns cleanly to the last active top bar button.
         if (inDrawer && direction == View.FOCUS_UP) {
             val returnTarget = lastTopBarFocusedView?.takeIf { it.isShown && it.isFocusable }
                 ?: (activeParentTag.takeIf { it.isNotEmpty() }?.let { topNavBar.findViewWithTag<View>(it) })
@@ -130,8 +134,8 @@ object FocusRouter {
             }
         }
 
-        // Keep horizontal edges inside any panel from escaping into background grids.
-        if (inDrawer && (direction == View.FOCUS_LEFT || direction == View.FOCUS_RIGHT)) {
+        // Strictly trap Left/Right/Down edges inside drawerLayout so focus NEVER escapes into background apps.
+        if (inDrawer) {
             return true
         }
 

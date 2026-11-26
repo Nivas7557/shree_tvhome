@@ -29,6 +29,8 @@ object ClockWidgetPanel {
         PanelSurfaceKit.addSectionHeader(context, panel, settings, "LIVE WIDGET PREVIEW")
         val previewStage = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            isFocusable = false
+            descendantFocusability = LinearLayout.FOCUS_BLOCK_DESCENDANTS
             clipChildren = false
             clipToPadding = false
             background = PanelSurfaceKit.glassCardBg(context, settings.accentColor, false, settings.tileColor)
