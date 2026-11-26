@@ -1,6 +1,6 @@
 // Important instructions:
-// - Act as the single source of truth for palettes, accents, tile options, clock styles, and location modes.
-// - Define clock style rules/ratios here so ClockWeatherCardDesign renders any added/edited/removed style without hardcoding.
+// - Act as the single source of truth for palettes, Canva-inspired gradient accents, tile specs, clock styles, and location modes.
+// - Any addition, edit, or removal here propagates automatically to panels, tiles, and widgets.
 
 package shree.tvhome.core
 
@@ -18,10 +18,12 @@ object Themes {
         val focusedColors: IntArray
     )
 
+    // Canva-inspired gradient accent spec holding primary, secondary, and tertiary gradient stops.
     data class AccentSpec(
         val key: String,
         val label: String,
-        val color: Int
+        val color: Int,
+        val gradientColors: IntArray
     )
 
     data class TileSizeSpec(
@@ -37,7 +39,7 @@ object Themes {
         val label: String
     )
 
-    // Data-driven specification for each clock style so renderer logic never hardcodes style names.
+    // Data-driven specification for clock styles so renderer logic never hardcodes style names.
     data class ClockStyleSpec(
         val key: String,
         val label: String,
@@ -115,14 +117,32 @@ object Themes {
         )
     )
 
-    // Accent choices used for focus borders, highlights, and panel accents.
+    // Natural Canva-style gradient accents blending complementary tones instead of flat single colors.
     val ACCENTS = listOf(
-        AccentSpec("royal", "Royal", Color.rgb(92, 184, 255)),
-        AccentSpec("emerald", "Mint", Color.rgb(46, 232, 138)),
-        AccentSpec("magenta", "Pink", Color.rgb(255, 110, 145)),
-        AccentSpec("purple", "Purple", Color.rgb(185, 135, 255)),
-        AccentSpec("sunset", "Gold", Color.rgb(255, 195, 75)),
-        AccentSpec("cyan", "Aqua", Color.rgb(75, 235, 245))
+        AccentSpec(
+            "royal", "Sky & Iris", Color.rgb(92, 184, 255),
+            intArrayOf(Color.rgb(72, 202, 255), Color.rgb(123, 120, 255))
+        ),
+        AccentSpec(
+            "emerald", "Mint & Teal", Color.rgb(46, 232, 138),
+            intArrayOf(Color.rgb(46, 232, 138), Color.rgb(24, 182, 198))
+        ),
+        AccentSpec(
+            "magenta", "Coral & Rose", Color.rgb(255, 110, 145),
+            intArrayOf(Color.rgb(255, 128, 112), Color.rgb(225, 76, 168))
+        ),
+        AccentSpec(
+            "purple", "Violet & Lilac", Color.rgb(185, 135, 255),
+            intArrayOf(Color.rgb(168, 98, 255), Color.rgb(232, 128, 225))
+        ),
+        AccentSpec(
+            "sunset", "Peach & Gold", Color.rgb(255, 195, 75),
+            intArrayOf(Color.rgb(255, 158, 68), Color.rgb(255, 218, 96))
+        ),
+        AccentSpec(
+            "cyan", "Aqua & Lagoon", Color.rgb(75, 235, 245),
+            intArrayOf(Color.rgb(64, 232, 218), Color.rgb(88, 158, 255))
+        )
     )
 
     // Tile size presets defining badge dimensions, desired grid cell size, and hidden-row scale.
@@ -224,6 +244,16 @@ object Themes {
     // Looks up a clock style specification by key, falling back to the first style in CLOCK_STYLES.
     fun getClockStyle(key: String?): ClockStyleSpec = clockStyleMap[key] ?: CLOCK_STYLES.first()
 
+    // Returns gradient color stops for an accent color so UI controls render rich Canva-like gradients.
+    fun getAccentGradientColors(accentColor: Int): IntArray {
+        val match = ACCENTS.find { it.color == accentColor }
+        if (match != null) return match.gradientColors
+        val hsv = FloatArray(3)
+        Color.colorToHSV(accentColor, hsv)
+        val shiftedHsv = floatArrayOf((hsv[0] + 38f) % 360f, (hsv[1] * 0.92f).coerceIn(0.35f, 1f), (hsv[2] * 0.96f).coerceIn(0.4f, 1f))
+        return intArrayOf(accentColor, Color.HSVToColor(shiftedHsv))
+    }
+
     // Calculates mean relative luminance across a gradient color array.
     private fun computeAverageLuminance(colors: IntArray): Float {
         if (colors.isEmpty()) return 0f
@@ -270,14 +300,15 @@ object Themes {
         return if (focused) spec.focusedColors else spec.normalColors
     }
 
-    // Builds glass panel gradient colors blended with the active accent color.
+    // Builds glass panel gradient colors blended with the active accent gradient.
     fun getGlassPanelColors(themeKey: String?, accentColor: Int, elevated: Boolean = false): IntArray {
         val base = getTheme(themeKey).normalColors
         val topCol = base.firstOrNull() ?: Color.rgb(22, 34, 72)
         val botCol = base.lastOrNull() ?: topCol
+        val gradEnd = getAccentGradientColors(accentColor).lastOrNull() ?: accentColor
         val alphaBoost = if (elevated) 242 else 220
         val c1 = LayoutMetrics.withAlpha(topCol, alphaBoost)
-        val c2 = LayoutMetrics.withAlpha(botCol, (alphaBoost + 8).coerceAtMost(252))
+        val c2 = LayoutMetrics.blendWithAccent(botCol, gradEnd, 0.12f, (alphaBoost + 6).coerceAtMost(252))
         val c3 = LayoutMetrics.blendWithAccent(botCol, accentColor, if (elevated) 0.22f else 0.14f, alphaBoost)
         return intArrayOf(c1, c2, c3)
     }
