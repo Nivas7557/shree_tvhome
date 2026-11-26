@@ -226,6 +226,18 @@ object Themes {
         OptionSpec("manual", "Manual")
     )
 
+    // Single source of truth for app tile nameplate visibility modes.
+    val NAMEPLATE_MODES = listOf(
+        OptionSpec("always", "Always"),
+        OptionSpec("focus", "On Focus"),
+        OptionSpec("hidden", "Hidden")
+    )
+
+    // Proportional minimum width ratios for adaptive panel grids (no fixed column counts).
+    const val MIN_SUMMARY_CARD_DP = 112
+    const val MIN_TEXT_CHIP_DP = 64
+    const val MIN_SWATCH_ORB_DP = 40
+
     val PANEL_WIDTH_OPTIONS = listOf(20, 25, 30, 35)
     const val PANEL_MIN_WIDTH_DP = 165
     val GRID_COL_RANGE = 3..8
