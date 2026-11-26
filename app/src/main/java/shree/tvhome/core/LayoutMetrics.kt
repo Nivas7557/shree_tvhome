@@ -1,6 +1,6 @@
 // Important instructions:
-// - Keep scaling, intent app discovery, and color blending centralized without hardcoded package assumptions.
-// - Reuse shared interpolators across layouts and animations.
+// - Compute adaptive UI scaling and proportional screen paddings dynamically across TV screen sizes.
+// - Keep shared interpolators, app discovery, and color helpers in one single source of truth.
 
 package shree.tvhome.core
 
@@ -19,7 +19,7 @@ object LayoutMetrics {
     val FLUID_SPRING = OvershootInterpolator(1.45f)
     val SILKY_EASE = DecelerateInterpolator(1.8f)
 
-    // Queries launchable activities for a given category while excluding the launcher itself.
+    // Queries launchable activities for a category while excluding the launcher package itself.
     fun addApps(
         pm: PackageManager,
         category: String,
@@ -36,20 +36,32 @@ object LayoutMetrics {
         }
     }
 
-    // Computes an adaptive scale factor based on screen width in dp.
+    // Computes an adaptive scale factor so UI elements fit 720p, 1080p, and 4K TV screens proportionally.
     fun calculateAdaptiveScale(context: Context): Float {
         val dm = context.resources.displayMetrics
         val maxSidePx = maxOf(dm.widthPixels, dm.heightPixels)
-        val widthDp = maxSidePx / dm.density
-        return (widthDp / 960f).coerceIn(0.85f, 1.12f)
+        val widthDp = maxSidePx / dm.density.coerceAtLeast(0.5f)
+        return (widthDp / 960f).coerceIn(0.82f, 1.18f)
     }
 
-    // Converts a dp value into scaled pixels rounded to the nearest integer.
+    // Computes responsive horizontal/vertical screen padding from display dimensions instead of fixed values.
+    fun screenHorizontalPadding(context: Context): Int {
+        val w = context.resources.displayMetrics.widthPixels
+        return (w * 0.028f).roundToInt().coerceIn(dp(context, 16), dp(context, 48))
+    }
+
+    // Computes responsive top/bottom screen padding from display height.
+    fun screenVerticalPadding(context: Context): Int {
+        val h = context.resources.displayMetrics.heightPixels
+        return (h * 0.032f).roundToInt().coerceIn(dp(context, 14), dp(context, 36))
+    }
+
+    // Converts a base dp value into adaptively scaled pixels.
     fun dp(context: Context, value: Int): Int {
         return (value * context.resources.displayMetrics.density * calculateAdaptiveScale(context)).roundToInt()
     }
 
-    // Converts a dp value into scaled floating-point pixels.
+    // Converts a base dp value into adaptively scaled floating-point pixels.
     fun dpF(context: Context, value: Float): Float {
         return value * context.resources.displayMetrics.density * calculateAdaptiveScale(context)
     }
@@ -69,7 +81,7 @@ object LayoutMetrics {
         }
     }
 
-    // Applies focus animation using the current motion style from AppSettings.
+    // Applies focus animation using the active motion style stored in AppSettings.
     fun applyFocusSpring(view: View, focused: Boolean, scale: Float = 1.06f, elevationDp: Float = 8f) {
         val style = AppSettings(view.context).motionStyle
         AnimationController.animateFocus(view, focused, style, scale, elevationDp)
