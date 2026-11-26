@@ -1,5 +1,5 @@
 // Important instructions:
-// - Render a crisp Clock Widget Settings & Live Preview panel without fixed paddings or forced focus requests.
+// - Render a visible, well-proportioned Clock Widget Settings & Live Preview stage without clipping the analog/digital dial.
 // - Drive clock styles and location modes directly from Themes (single source of truth).
 
 package shree.tvhome.panels
@@ -25,7 +25,6 @@ object ClockWidgetPanel {
         panel.clipToPadding = false
 
         val gapV = LayoutMetrics.dynamicSpace(context, ratio = 0.01f, minDp = 6, maxDp = 14, horizontal = false)
-        val previewH = LayoutMetrics.dynamicSpace(context, ratio = 0.28f, minDp = 175, maxDp = 260, horizontal = false)
 
         PanelSurfaceKit.addSectionHeader(context, panel, settings, "LIVE WIDGET PREVIEW")
         val previewStage = LinearLayout(context).apply {
@@ -33,15 +32,17 @@ object ClockWidgetPanel {
             clipChildren = false
             clipToPadding = false
             background = PanelSurfaceKit.glassCardBg(context, settings.accentColor, false, settings.tileColor)
-            val padH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 8, maxDp = 16, horizontal = true)
-            val padV = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 8, maxDp = 16, horizontal = false)
+            val padH = LayoutMetrics.dynamicSpace(context, ratio = 0.010f, minDp = 6, maxDp = 12, horizontal = true)
+            val padV = LayoutMetrics.dynamicSpace(context, ratio = 0.010f, minDp = 6, maxDp = 12, horizontal = false)
             setPadding(padH, padV, padH, padV)
         }
         val previewWidget = ClockWeatherCardDesign(context, settings).apply {
             isFocusable = false
             isClickable = false
+            descendantFocusability = LinearLayout.FOCUS_BLOCK_DESCENDANTS
         }
-        previewStage.addView(previewWidget, LinearLayout.LayoutParams(-1, previewH))
+        // Use WRAP_CONTENT (-2) height so the dial, digital time, and weather badge never clip.
+        previewStage.addView(previewWidget, LinearLayout.LayoutParams(-1, -2))
         panel.addView(previewStage, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV })
 
         PanelSurfaceKit.addSectionHeader(context, panel, settings, "CLOCK STYLE")
