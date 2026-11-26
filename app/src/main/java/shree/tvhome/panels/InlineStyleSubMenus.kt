@@ -341,3 +341,4 @@ object InlineStyleSubMenus {
         return syncOrbs
     }
 }
+    }
