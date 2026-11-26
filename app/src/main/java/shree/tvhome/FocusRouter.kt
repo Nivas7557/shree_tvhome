@@ -40,9 +40,9 @@ object FocusRouter {
 
     // Discovers dynamically if the currently focused view sits inside any inline horizontal sub-menu.
     private fun findInlineSubMenuAncestor(view: View?): ViewGroup? {
-        var parent = view?.parent
-        while (parent is View) {
-            if (parent.tag == "inline_sub_menu") return parent as? ViewGroup
+        var parent: android.view.ViewParent? = view?.parent
+        while (parent != null) {
+            if (parent is ViewGroup && parent.tag == "inline_sub_menu") return parent
             parent = parent.parent
         }
         return null
