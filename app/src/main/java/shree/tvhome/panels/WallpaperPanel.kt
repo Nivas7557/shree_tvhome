@@ -37,10 +37,10 @@ object WallpaperPanel {
         val sceneCardH = LayoutMetrics.dynamicSpace(ctx, ratio = 0.066f, minDp = 42, maxDp = 58, horizontal = false)
         val pillH = LayoutMetrics.dynamicSpace(ctx, ratio = 0.052f, minDp = 32, maxDp = 44, horizontal = false)
 
-        val savedWallpaper = settings.prefs.getString(AppSettings.PREF_WALLPAPER, null)
-        val savedMode = settings.liveWallpaperMode
-        val hasCustomImage = savedWallpaper != null
-        val curMode = settings.liveWallpaperMode
+      var savedWallpaper = settings.prefs.getString(AppSettings.PREF_WALLPAPER, null)
+      var savedMode = settings.liveWallpaperMode
+      val hasCustomImage = savedWallpaper != null
+      val curMode = settings.liveWallpaperMode
 
         PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "SMART DYNAMIC MODES")
         LiveBackdrop.SMART_MODES.chunked(2).forEach { modePair ->
@@ -67,12 +67,14 @@ object WallpaperPanel {
                             settings.liveWallpaperMode = savedMode
                             onLiveUpdate()
                         }
-                    ) {
-                        settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
-                        settings.liveWallpaperMode = spec.key
-                        onLiveUpdate()
-                        rebuild(ctx, panel, settings, onLiveUpdate, onPickNewImage, onDone)
-                    },
+                  ) {
+                      savedWallpaper = null
+                      savedMode = spec.key
+                      settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
+                      settings.liveWallpaperMode = spec.key
+                      onLiveUpdate()
+                      rebuild(ctx, panel, settings, onLiveUpdate, onPickNewImage, onDone)
+                  }
                     LinearLayout.LayoutParams(0, smartCardH, 1f).apply {
                         if (idx < modePair.lastIndex) rightMargin = gapH
                     }
@@ -105,12 +107,14 @@ object WallpaperPanel {
                         settings.liveWallpaperMode = savedMode
                         onLiveUpdate()
                     }
-                ) {
-                    settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
-                    settings.liveWallpaperMode = spec.key
-                    onLiveUpdate()
-                    rebuild(ctx, panel, settings, onLiveUpdate, onPickNewImage, onDone)
-                }
+                  ) {
+                      savedWallpaper = null
+                      savedMode = spec.key
+                      settings.prefs.edit().remove(AppSettings.PREF_WALLPAPER).apply()
+                      settings.liveWallpaperMode = spec.key
+                      onLiveUpdate()
+                      rebuild(ctx, panel, settings, onLiveUpdate, onPickNewImage, onDone)
+                  }
                 val p = LinearLayout.LayoutParams(0, sceneCardH, 1f).apply {
                     if (idx < scenePair.lastIndex) rightMargin = gapH
                 }
