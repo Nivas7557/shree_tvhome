@@ -47,6 +47,19 @@ object AppTileDesign {
         fun onHideApp(pkg: String, label: String)
     }
 
+    private val labelCache = HashMap<String, String>()
+
+    fun clearAssetCache() {
+        labelCache.clear()
+    }
+
+    fun getCachedLabel(pm: PackageManager, info: ResolveInfo): String {
+        val pkg = info.activityInfo.packageName
+        return labelCache.getOrPut(pkg) {
+            info.loadLabel(pm)?.toString()?.takeIf { it.isNotBlank() } ?: pkg
+        }
+    }
+
     // Custom glossy surface supporting Heart/Circle/Squircle silhouettes, breathing glow, and focus shimmer sweep.
     private class GlossyTileSurface(
         ctx: Context,
