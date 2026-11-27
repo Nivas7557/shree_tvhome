@@ -545,16 +545,17 @@ class TopHeaderBar(
         }, 4200L)
     }
 
-    // Updates greetingCard with Greeting Studio phrase & font settings (preserving original circular avatar & cutout).
+    // Refreshes greetingCard with Greeting Studio style & font family while keeping original avatar cutout & air-fog.
     fun refreshGreeting() {
-        val name = settings.userName.ifBlank { "Shree" }
-        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-        val (timeGreeting, celestialEmoji) = when (hour) {
-            in 5..11 -> "Good Morning" to "☀️"
-            in 12..16 -> "Good Afternoon" to "🌤️"
-            in 17..21 -> "Good Evening" to "✨"
-            else -> "Good Night" to "🌙"
-        }
+        val fontSpec = Themes.GREETING_FONTS.find { it.key == settings.greetingFont }
+            ?: Themes.GREETING_FONTS.first()
+        greetingCard.updateGreeting(
+            name = settings.userName,
+            phrase = settings.greetingPhrase,
+            styleKey = settings.greetingStyle,
+            fontFamily = fontSpec.family
+        )
+    }
 
         val effectiveGreeting = when (settings.greetingStyle) {
             "minimal" -> celestialEmoji
