@@ -6,14 +6,12 @@ name: Android Debug APK
 
 on:
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
-
     steps:
       - name: Check out source
         uses: actions/checkout@v5
@@ -103,7 +101,6 @@ jobs:
           else
             MAX_BUILDS=$OTHER_MAX_BUILDS
           fi
-
           SAFE_BRANCH=$(echo "$BRANCH_NAME" | tr '/' '_')
           TARGET_FOLDER="${REPO_NAME}_${SAFE_BRANCH}"
           HOST="github.com"
@@ -114,7 +111,6 @@ jobs:
 
           mkdir -p "$TARGET_FOLDER"
           cd "$TARGET_FOLDER"
-
           OLDEST=$((MAX_BUILDS - 1))
 
           for f in Nivas_Launcher_old_*.apk; do
@@ -142,7 +138,6 @@ jobs:
 
           cp "../../app/build/outputs/apk/debug/app-debug.apk" "Nivas_Launcher_new_${DT}.apk"
           cd ..
-
           git checkout --orphan temp_clean_branch
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.${HOST}"

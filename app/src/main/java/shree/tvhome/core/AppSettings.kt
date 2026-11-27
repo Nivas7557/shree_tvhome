@@ -111,6 +111,10 @@ class AppSettings(context: Context) {
             ?: Themes.TILE_SHAPES.first().key
         set(value) = prefs.edit().putString(PREF_TILE_SHAPE, value).apply()
 
+    var iconBadge: String
+        get() = prefs.getString("tile_icon_badge", "") ?: ""
+        set(value) = prefs.edit().putString("tile_icon_badge", value).apply()
+
     // Selected glass palette key; notifies style listeners automatically on change.
     var tileColor: String
         get() = prefs.getString(PREF_TILE_COLOR, Themes.THEMES.first().key) ?: Themes.THEMES.first().key
@@ -183,6 +187,22 @@ class AppSettings(context: Context) {
         get() = prefs.getString(PREF_GREETING_PHRASE, "") ?: ""
         set(value) = prefs.edit().putString(PREF_GREETING_PHRASE, value).apply()
 
+    var greetingStyle: String
+        get() = prefs.getString("greeting_style", Themes.GREETING_STYLES.first().key) ?: Themes.GREETING_STYLES.first().key
+        set(value) { prefs.edit().putString("greeting_style", value).apply(); notifyStyleChanged() }
+
+    var greetingFont: String
+        get() = prefs.getString("greeting_font", Themes.GREETING_FONTS.first().key) ?: Themes.GREETING_FONTS.first().key
+        set(value) { prefs.edit().putString("greeting_font", value).apply(); notifyStyleChanged() }
+
+    var sleepTimerMins: Int
+        get() = prefs.getInt("sleep_timer_mins", 0)
+        set(value) { prefs.edit().putInt("sleep_timer_mins", value).apply(); notifyStyleChanged() }
+
+    var eyeComfortEnabled: Boolean
+        get() = prefs.getBoolean("eye_comfort_enabled", false)
+        set(value) { prefs.edit().putBoolean("eye_comfort_enabled", value).apply(); notifyStyleChanged() }
+        
     // App catalog sort order ("az" or "za").
     var sortOrder: String
         get() = prefs.getString(PREF_SORT_ORDER, "az") ?: "az"

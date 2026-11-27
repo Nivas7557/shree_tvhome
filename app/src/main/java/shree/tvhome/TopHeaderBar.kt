@@ -114,8 +114,8 @@ class TopHeaderBar(
         clipChildren = false
         clipToPadding = false
 
-        val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.054f, minDp = 34, maxDp = 48, horizontal = false)
-        val avatarSize = (barHeight * 2.25f).roundToInt()
+        val barHeight = LayoutMetrics.dynamicSpace(context, ratio = Themes.HEADER_BAR_HEIGHT_RATIO, minDp = Themes.HEADER_BAR_MIN_DP, maxDp = Themes.HEADER_BAR_MAX_DP, horizontal = false)
+        val avatarSize = (barHeight * Themes.AVATAR_SIZE_MULTIPLIER).roundToInt()
         val navGap = LayoutMetrics.dynamicSpace(context, ratio = 0.008f, minDp = 5, maxDp = 12, horizontal = true)
         val seamGap = LayoutMetrics.dpF(context, 4f)
         val avatarRadius = avatarSize / 2f
@@ -545,9 +545,16 @@ class TopHeaderBar(
         }, 4200L)
     }
 
+    // Refreshes greetingCard with Greeting Studio style & font family while keeping original avatar cutout & air-fog.
     fun refreshGreeting() {
-        greetingCard.updateGreeting(settings.userName, settings.greetingPhrase)
-        greetingCard.setAccentColor(settings.accentColor)
+        val fontSpec = Themes.GREETING_FONTS.find { it.key == settings.greetingFont }
+            ?: Themes.GREETING_FONTS.first()
+        greetingCard.updateGreeting(
+            name = settings.userName,
+            phrase = settings.greetingPhrase,
+            styleKey = settings.greetingStyle,
+            fontFamily = fontSpec.family
+        )
     }
 
     override fun onAttachedToWindow() {

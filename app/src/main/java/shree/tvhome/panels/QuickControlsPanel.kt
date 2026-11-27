@@ -160,7 +160,47 @@ object QuickControlsPanel {
                 )
             }
         }
+        // Eye Comfort & Sleep Timer section modeled after QuickSettingsDrawer.tsx.
+        PanelSurfaceKit.addSectionHeader(ctx, panel, settings, "EYE COMFORT & SLEEP TIMER")
+        val sleepOptions = listOf(0 to "Off", 15 to "15m", 30 to "30m", 60 to "60m", 120 to "120m")
 
+        panel.addView(
+            PanelSurfaceKit.makeActionRow(
+                ctx,
+                settings,
+                if (settings.eyeComfortEnabled) "🌙" else "👁",
+                "Eye Comfort Mode",
+                if (settings.eyeComfortEnabled) "Active • Warm blue-light filter" else "Off • Standard display warmth"
+            ) {
+                val next = !settings.eyeComfortEnabled
+                settings.eyeComfortEnabled = next
+                PictureAudioPanel.applyWarmTintOverlay(ctx, if (next) 35 else 0)
+                onNavigate(PanelHub.MODE_QUICK)
+            },
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV }
+        )
+
+        val currentSleepLabel = sleepOptions.find { it.first == settings.sleepTimerMins }?.second ?: "Off"
+        panel.addView(
+            PanelSurfaceKit.makeActionRow(
+                ctx,
+                settings,
+                "⏲️",
+                "Sleep Timer: $currentSleepLabel",
+                "Tap to cycle Off → 15m → 30m → 60m → 120m"
+            ) {
+                val curIdx = sleepOptions.indexOfFirst { it.first == settings.sleepTimerMins }.coerceAtLeast(0)
+                val nextSpec = sleepOptions[(curIdx + 1) % sleepOptions.size]
+                settings.sleepTimerMins = nextSpec.first
+                Toast.makeText(
+                    ctx,
+                    if (nextSpec.first == 0) "Sleep timer off" else "Sleep timer set to ${nextSpec.second}",
+                    Toast.LENGTH_SHORT
+                ).show()
+                onNavigate(PanelHub.MODE_QUICK)
+            },
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV }
+        )
         // Ambient screensaver and lightweight memory optimization triggers.
         panel.addView(
             PanelSurfaceKit.makeActionRow(

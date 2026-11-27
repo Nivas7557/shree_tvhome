@@ -28,11 +28,17 @@ android {
 
     buildTypes {
         debug {
+            if (persistentKeystore.exists()) {
+                signingConfig signingConfigs.persistentDebug
+            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         release {
+            if (persistentKeystore.exists()) {
+                signingConfig signingConfigs.persistentDebug
+            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

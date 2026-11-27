@@ -315,12 +315,16 @@ class PanelHub(
         )
 
         activeScroll = ScrollView(context).apply {
+            isFocusable = false
+            isFocusableInTouchMode = false
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             isVerticalScrollBarEnabled = false
             overScrollMode = ScrollView.OVER_SCROLL_NEVER
             isFillViewport = true
             clipChildren = true
             clipToPadding = true
         }
+
         activePanel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             clipChildren = true
