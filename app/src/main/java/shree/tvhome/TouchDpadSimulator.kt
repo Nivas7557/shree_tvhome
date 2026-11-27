@@ -1,6 +1,6 @@
 // Important instructions:
-// - Translate finger swipes, single tap (OK), long-press (Menu), and 2-finger tap (Back) into authentic TV D-Pad KeyEvents on mobile.
-// - Exit Android touch-mode cleanly before dispatching KeyEvents so the very first swipe or tap moves focus immediately.
+// - Bypass Android's touch-mode focus lock so finger swipes, taps, and long-presses act like a real TV D-Pad remote on mobile.
+// - Automatically stay completely inactive on real Android TV devices.
 
 package shree.tvhome
 
@@ -9,47 +9,57 @@ import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
 import android.os.SystemClock
+import android.view.FocusFinder
 import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import kotlin.math.abs
 
 class TouchDpadSimulator(private val activity: Activity) {
 
-    // Activate automatically on non-TV devices (phones/tablets) while staying completely dormant on real Android TVs.
+    // Active automatically on mobile/tablet test devices; disabled on real Android TVs.
     private val isMobileTestDevice: Boolean =
         (activity.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType !=
             Configuration.UI_MODE_TYPE_TELEVISION
 
-    private val swipeDistancePx: Float = ViewConfiguration.get(activity).scaledTouchSlop * 2.2f
+    private val swipeThresholdPx: Float = ViewConfiguration.get(activity).scaledTouchSlop * 2.0f
     private var downX = 0f
     private var downY = 0f
-    private var gestureHandled = false
-    private var twoFingerPointerSeen = false
+    private var gestureConsumed = false
+    private var twoFingerTap = false
+    private var trackedFocus: View? = null
 
     private val gestureDetector = GestureDetector(
         activity,
         object : GestureDetector.SimpleOnGestureListener() {
 
-            // Trigger TV Remote OK (DPAD_CENTER) on single tap.
+            // Single tap triggers OK / Click on the currently focused tile or button.
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                if (gestureHandled) return true
-                gestureHandled = true
-                dispatchRemoteKey(KeyEvent.KEYCODE_DPAD_CENTER, isLongPress = false)
+                if (gestureConsumed) return true
+                val target = resolveCurrentFocus() ?: return false
+                gestureConsumed = true
+                if (!target.performClick()) {
+                    dispatchKeyPair(KeyEvent.KEYCODE_DPAD_CENTER, isLongPress = false)
+                }
                 return true
             }
 
-            // Trigger TV Remote OK Long-Press (opens app options menu on focused tile).
+            // Long press opens the TV context menu (Add to Favorites / Hide App) on the focused tile.
             override fun onLongPress(e: MotionEvent) {
-                if (gestureHandled) return
-                gestureHandled = true
-                dispatchRemoteKey(KeyEvent.KEYCODE_DPAD_CENTER, isLongPress = true)
+                if (gestureConsumed) return
+                val target = resolveCurrentFocus() ?: return
+                gestureConsumed = true
+                if (!target.performLongClick()) {
+                    dispatchKeyPair(KeyEvent.KEYCODE_MENU, isLongPress = false)
+                }
             }
         }
     )
 
-    // Intercepts Activity touch events to convert swipes and taps into D-Pad navigation on mobile.
+    // Intercepts Activity touch events to translate swipes and taps into real TV D-Pad actions.
     fun onDispatchTouchEvent(ev: MotionEvent): Boolean {
         if (!isMobileTestDevice) return false
 
@@ -57,56 +67,106 @@ class TouchDpadSimulator(private val activity: Activity) {
             MotionEvent.ACTION_DOWN -> {
                 downX = ev.x
                 downY = ev.y
-                gestureHandled = false
-                twoFingerPointerSeen = false
+                gestureConsumed = false
+                twoFingerTap = false
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
-                if (ev.pointerCount >= 2) {
-                    twoFingerPointerSeen = true
-                }
+                if (ev.pointerCount >= 2) twoFingerTap = true
             }
             MotionEvent.ACTION_MOVE -> {
-                if (!gestureHandled && !twoFingerPointerSeen) {
+                if (!gestureConsumed && !twoFingerTap) {
                     val dx = ev.x - downX
                     val dy = ev.y - downY
-                    if (abs(dx) >= swipeDistancePx || abs(dy) >= swipeDistancePx) {
-                        gestureHandled = true
+                    if (abs(dx) >= swipeThresholdPx || abs(dy) >= swipeThresholdPx) {
+                        gestureConsumed = true
                         val keyCode = if (abs(dx) > abs(dy)) {
                             if (dx > 0f) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_LEFT
                         } else {
                             if (dy > 0f) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP
                         }
-                        dispatchRemoteKey(keyCode, isLongPress = false)
+                        simulateDirectionalDpad(keyCode)
                     }
                 }
             }
             MotionEvent.ACTION_UP -> {
-                if (twoFingerPointerSeen && !gestureHandled) {
-                    gestureHandled = true
-                    dispatchRemoteKey(KeyEvent.KEYCODE_BACK, isLongPress = false)
+                if (twoFingerTap && !gestureConsumed) {
+                    gestureConsumed = true
+                    dispatchKeyPair(KeyEvent.KEYCODE_BACK, isLongPress = false)
                     return true
                 }
             }
         }
 
         gestureDetector.onTouchEvent(ev)
-        return gestureHandled && (ev.actionMasked == MotionEvent.ACTION_MOVE || ev.actionMasked == MotionEvent.ACTION_UP)
+        return gestureConsumed && (ev.actionMasked == MotionEvent.ACTION_MOVE || ev.actionMasked == MotionEvent.ACTION_UP)
     }
 
-    // Ensures a focus target exists (bypassing Android touch-mode swallow) and dispatches synthetic KeyEvents.
-    private fun dispatchRemoteKey(keyCode: Int, isLongPress: Boolean) {
-        val decor = activity.window?.decorView ?: return
-        if (decor.findFocus() == null) {
-            FocusRouter.findFirstFocusable(decor)?.requestFocus()
+    // Moves focus in the given D-Pad direction even while Android is in Touch Mode.
+    private fun simulateDirectionalDpad(keyCode: Int) {
+        val current = resolveCurrentFocus()
+        if (current == null) {
+            val decor = activity.window?.decorView ?: return
+            val first = FocusRouter.findFirstFocusable(decor) ?: return
+            grantFocusInTouchMode(first)
+            return
         }
 
+        // First let Activity's dispatchKeyEvent (FocusRouter & CinemaConveyorShelf) handle custom routing.
+        val now = SystemClock.uptimeMillis()
+        val down = KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0)
+        val handledByCustomRouter = activity.dispatchKeyEvent(down)
+        activity.dispatchKeyEvent(KeyEvent(now, now + 16L, KeyEvent.ACTION_UP, keyCode, 0))
+
+        // Sync trackedFocus after custom router or fallback to FocusFinder if Android touch-mode blocked movement.
+        val afterFocus = activity.window?.decorView?.findFocus()
+        if (afterFocus != null && afterFocus !== current) {
+            trackedFocus = afterFocus
+            return
+        }
+
+        if (!handledByCustomRouter) {
+            val dir = when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> View.FOCUS_LEFT
+                KeyEvent.KEYCODE_DPAD_RIGHT -> View.FOCUS_RIGHT
+                KeyEvent.KEYCODE_DPAD_UP -> View.FOCUS_UP
+                else -> View.FOCUS_DOWN
+            }
+            val rootGroup = activity.window?.decorView as? ViewGroup ?: return
+            val next = FocusFinder.getInstance().findNextFocus(rootGroup, current, dir)
+            if (next != null && next !== current) {
+                grantFocusInTouchMode(next)
+            }
+        }
+    }
+
+    // Returns the active focused view or restores focus to the first focusable item on screen.
+    private fun resolveCurrentFocus(): View? {
+        val decor = activity.window?.decorView ?: return null
+        val live = decor.findFocus() ?: trackedFocus?.takeIf { it.isAttachedToWindow && it.isShown }
+        if (live != null) {
+            if (!live.hasFocus()) grantFocusInTouchMode(live)
+            return live
+        }
+        val first = FocusRouter.findFirstFocusable(decor)
+        if (first != null) grantFocusInTouchMode(first)
+        return first
+    }
+
+    // Temporarily enables focusableInTouchMode so Android grants real focus during touchscreen simulation.
+    private fun grantFocusInTouchMode(target: View) {
+        val prev = target.isFocusableInTouchMode
+        target.isFocusableInTouchMode = true
+        if (target.requestFocus()) {
+            trackedFocus = target
+        }
+        target.isFocusableInTouchMode = prev
+    }
+
+    // Dispatches synthetic DOWN + UP KeyEvents for OK, Menu, or Back actions.
+    private fun dispatchKeyPair(keyCode: Int, isLongPress: Boolean) {
         val now = SystemClock.uptimeMillis()
         val flags = if (isLongPress) KeyEvent.FLAG_LONG_PRESS else 0
-        val repeatCount = if (isLongPress) 1 else 0
-        val downEvent = KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, repeatCount, 0, -1, 0, flags)
-        activity.dispatchKeyEvent(downEvent)
-
-        val upEvent = KeyEvent(now, now + 24L, KeyEvent.ACTION_UP, keyCode, 0, 0, -1, 0, 0)
-        activity.dispatchKeyEvent(upEvent)
+        activity.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, if (isLongPress) 1 else 0, 0, -1, 0, flags))
+        activity.dispatchKeyEvent(KeyEvent(now, now + 20L, KeyEvent.ACTION_UP, keyCode, 0, 0, -1, 0, 0))
     }
 }
