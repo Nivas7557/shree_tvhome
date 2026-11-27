@@ -1,32 +1,35 @@
 // Important instructions:
-// - Derive monotonic versionCode and 0.X.Y versionName automatically from GitHub Actions run number.
-// - Let Gradle use ~/.android/debug.keystore so signing matches the persistent CI keystore automatically.
+// - Keep APK lean by shrinking unused code/resources and stripping unneeded metadata packaging entries.
+// - Maintain consistent JVM target 17 across Java and Kotlin compilation.
 
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
 }
 
-// Compute automatic run-based versionCode and 0.X.Y versionName.
-def runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
-def verMajor = runNumber.intdiv(100)
-def verMinor = (runNumber.intdiv(10)) % 10
-def verPatch = runNumber % 10
-def autoVersionName = "${verMajor}.${verMinor}.${verPatch}"
-
+// Configure Android TV application SDK levels, Java/Kotlin targets, shrinking, and packaging rules.
 android {
     namespace 'shree.tvhome'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
-        applicationId "shree.tvhome"
-        minSdk 21
+        applicationId 'shree.tvhome'
+        minSdk 23
         targetSdk 34
-        versionCode runNumber
-        versionName autoVersionName
+        versionCode 1
+        versionName '3.0.0'
     }
 
-    // Enable R8 code & resource shrinking on debug builds so APK size stays low.
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    // Enable shrinking and ProGuard rules to reduce APK size and strip unused code/resources.
     buildTypes {
         debug {
             minifyEnabled true
@@ -36,18 +39,21 @@ android {
         release {
             minifyEnabled true
             shrinkResources true
+            signingConfig signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+    // Exclude unnecessary metadata and debug probe artifacts from final APK packaging.
+    packaging {
+        resources {
+            excludes += [
+                'META-INF/**',
+                'kotlin/**',
+                '**/*.kotlin_builtins',
+                '**/*.kotlin_module',
+                'DebugProbesKt.bin'
+            ]
+        }
     }
-    kotlinOptions {
-        jvmTarget = '17'
-    }
-}
-
-dependencies {
 }
