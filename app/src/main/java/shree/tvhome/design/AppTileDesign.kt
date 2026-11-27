@@ -1,179 +1,95 @@
 // Important instructions:
-// - Render full-bleed Android TV banners when available, or clean adaptive TV banner cards without glass border frames.
-// - Bound bitmap memory via LruCache and keep tile layout responsive across all TV resolutions.
-
+// - Assemble lightweight app tiles delegating visual silhouette/aura to FocusAppGlowDesign and context actions to AppMenuDialogDesign.
+// - Extract and cache a 16x16 dominant icon color and app label once per package to keep RAM and CPU load near zero.
 package shree.tvhome.design
 
-import android.animation.ValueAnimator
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
-import android.graphics.Paint
-import android.graphics.Shader
 import android.graphics.Typeface
-import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.text.TextUtils
-import android.util.LruCache
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
-import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import shree.tvhome.core.AnimationController
 import shree.tvhome.core.AppSettings
 import shree.tvhome.core.LayoutMetrics
+import shree.tvhome.core.Themes
 import java.util.concurrent.ConcurrentHashMap
 
 object AppTileDesign {
-
-    // Bound bitmap memory using ~1/8th of max JVM memory (in KB) via LruCache.
-    private val cacheKb = ((Runtime.getRuntime().maxMemory() / 1024L) / 8L).toInt().coerceIn(2048, 16384)
-    private val bannerBitmapCache = object : LruCache<String, Bitmap>(cacheKb) {
-        override fun sizeOf(key: String, value: Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
-    }
-    private val labelCache = ConcurrentHashMap<String, String>()
-    private val colorCache = ConcurrentHashMap<String, Int>()
-    private var lastFocusedX = -1f
-    private var lastFocusedY = -1f
-
-    // Evicts cached banners, labels, and dominant color entries.
-    fun clearAssetCache() {
-        bannerBitmapCache.evictAll()
-        labelCache.clear()
-        colorCache.clear()
-    }
-
     interface TileActions {
         fun onToggleFavorite(pkg: String, label: String)
         fun onMoveFavorite(pkg: String, delta: Int)
         fun onHideApp(pkg: String, label: String)
     }
-
-    // Returns and caches the display label for a launchable activity.
+    private val labelCache = ConcurrentHashMap<String, String>()
+    private val dominantColorCache = ConcurrentHashMap<String, Int>()
+    // Releases cached labels and dominant icon colors to keep RAM clean.
+    fun clearAssetCache() {
+        labelCache.clear()
+        dominantColorCache.clear()
+    }
+    // Returns cached app display label without repeated PackageManager IPC calls.
     fun getCachedLabel(pm: PackageManager, info: ResolveInfo): String {
         val pkg = info.activityInfo.packageName
-        return labelCache.getOrPut(pkg) { info.loadLabel(pm).toString() }
-    }
-
-    // Loads native Android TV banner if present, or synthesizes a clean 16:10 TV banner card from the app icon.
-    private fun getTvBannerBitmap(pm: PackageManager, info: ResolveInfo): Bitmap {
-        val pkg = info.activityInfo.packageName
-        bannerBitmapCache.get(pkg)?.let { return it }
-
-        val nativeBanner: Drawable? = try {
-            info.activityInfo.loadBanner(pm) ?: pm.getApplicationBanner(pkg)
-        } catch (_: Exception) {
-            null
-        }
-
-        val rendered = if (nativeBanner != null) {
-            renderNativeTvBanner(nativeBanner)
-        } else {
-            renderSynthesizedTvBanner(info.loadIcon(pm))
-        }
-        bannerBitmapCache.put(pkg, rendered)
-        return rendered
-    }
-
-    // Draws an official 320x180 Android TV banner onto a compact 16:10 bitmap.
-    private fun renderNativeTvBanner(banner: Drawable): Bitmap {
-        val outW = 256
-        val outH = 160
-        val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(out)
-        banner.setBounds(0, 0, outW, outH)
-        banner.draw(canvas)
-        return out
-    }
-
-    // Synthesizes a clean full-bleed 16:10 TV card using the app's dominant palette and centered icon.
-    private fun renderSynthesizedTvBanner(iconDrawable: Drawable): Bitmap {
-        val iconSample = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
-        val sampleCanvas = Canvas(iconSample)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && iconDrawable is AdaptiveIconDrawable) {
-            iconDrawable.background?.apply { setBounds(-16, -16, 80, 80); draw(sampleCanvas) }
-            iconDrawable.foreground?.apply { setBounds(-12, -12, 76, 76); draw(sampleCanvas) }
-        } else {
-            iconDrawable.setBounds(0, 0, 64, 64)
-            iconDrawable.draw(sampleCanvas)
-        }
-
-        val primaryCol = extractVibrantColor(iconSample, Color.rgb(42, 82, 168))
-        val hsv = FloatArray(3)
-        Color.colorToHSV(primaryCol, hsv)
-        val topCol = Color.HSVToColor(255, floatArrayOf(hsv[0], (hsv[1] * 0.85f).coerceIn(0.25f, 0.90f), (hsv[2] * 0.62f).coerceIn(0.22f, 0.72f)))
-        val botCol = Color.HSVToColor(255, floatArrayOf((hsv[0] + 18f) % 360f, (hsv[1] * 0.92f).coerceIn(0.30f, 0.95f), (hsv[2] * 0.36f).coerceIn(0.14f, 0.48f)))
-
-        val outW = 256
-        val outH = 160
-        val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(out)
-
-        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(0f, 0f, outW.toFloat(), outH.toFloat(), intArrayOf(topCol, botCol), null, Shader.TileMode.CLAMP)
-        }
-        canvas.drawRect(0f, 0f, outW.toFloat(), outH.toFloat(), bgPaint)
-
-        val iconSize = 84
-        val left = (outW - iconSize) / 2
-        val top = (outH - iconSize) / 2
-        canvas.drawBitmap(iconSample, null, android.graphics.Rect(left, top, left + iconSize, top + iconSize), Paint(Paint.FILTER_BITMAP_FLAG))
-        if (!iconSample.isRecycled) iconSample.recycle()
-        return out
-    }
-
-    // Extracts and caches a vibrant dominant color from the rendered banner bitmap.
-    private fun getAppDominantColor(pkg: String, bmp: Bitmap, fallback: Int): Int {
-        return colorCache.getOrPut(pkg) {
-            extractVibrantColor(bmp, fallback)
+        return labelCache.getOrPut(pkg) {
+            info.loadLabel(pm)?.toString()?.takeIf { it.isNotBlank() } ?: pkg
         }
     }
-
-    // Samples pixels across the bitmap to find a lively accent color.
-    private fun extractVibrantColor(bmp: Bitmap, fallback: Int): Int {
+    // Extracts a vibrant dominant color from a tiny 16x16 bitmap sample and recycles immediately.
+    private fun extractDominantColor(pkg: String, iconDrawable: Drawable?, fallbackColor: Int): Int {
+        dominantColorCache[pkg]?.let { return it }
+        if (iconDrawable == null) return fallbackColor
+        var sampleBmp: Bitmap? = null
         return try {
-            var bestColor = fallback
-            var maxScore = -1f
-            val stepX = maxOf(1, bmp.width / 16)
-            val stepY = maxOf(1, bmp.height / 16)
-
-            for (x in stepX until bmp.width - stepX step stepX) {
-                for (y in stepY until bmp.height - stepY step stepY) {
-                    val px = bmp.getPixel(x, y)
-                    if (Color.alpha(px) < 180) continue
-                    val hsv = FloatArray(3)
+            val size = 16
+            sampleBmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(sampleBmp)
+            iconDrawable.setBounds(0, 0, size, size)
+            iconDrawable.draw(canvas)
+            var bestColor = fallbackColor
+            var bestScore = -1f
+            val hsv = FloatArray(3)
+            for (y in 2 until size - 2) {
+                for (x in 2 until size - 2) {
+                    val px = sampleBmp.getPixel(x, y)
+                    if (Color.alpha(px) < 160) continue
                     Color.colorToHSV(px, hsv)
-                    val sat = hsv[1]
-                    val valBright = hsv[2]
-                    if (valBright < 0.22f || (sat < 0.16f && valBright > 0.85f)) continue
-                    val score = (sat * 2.2f) + valBright
-                    if (score > maxScore) {
-                        maxScore = score
+                    val sat = hsv.get(1)
+                    val valBrightness = hsv.get(2)
+                    if (valBrightness < 0.22f) continue
+                    val score = (sat * 2.2f) + (valBrightness * 0.8f)
+                    if (score > bestScore) {
+                        bestScore = score
+                        bestColor = px
+                    }
+
+                    if (score > bestScore) {
+                        bestScore = score
                         bestColor = px
                     }
                 }
             }
-            val outHsv = FloatArray(3)
-            Color.colorToHSV(bestColor, outHsv)
-            outHsv[1] = maxOf(outHsv[1], 0.55f)
-            outHsv[2] = maxOf(outHsv[2], 0.88f)
-            Color.HSVToColor(255, outHsv)
+            dominantColorCache[pkg] = bestColor
+            bestColor
         } catch (_: Exception) {
-            fallback
+            fallbackColor
+        } finally {
+            sampleBmp?.let { if (!it.isRecycled) it.recycle() }
         }
     }
-    // Constructs a full-width TV banner tile with FocusAppGlowDesign aura, nameplate, and D-Pad/touch actions.
+    // Builds a focusable glass app tile using FocusAppGlowDesign and AppMenuDialogDesign.
     fun create(
         ctx: Context,
         pm: PackageManager,
@@ -185,197 +101,142 @@ object AppTileDesign {
         canMoveRight: Boolean,
         w: Int,
         h: Int,
-        actions: TileActions
+        actions: TileActions,
+        isHiddenMode: Boolean = false
     ): View {
         val pkg = info.activityInfo.packageName
         val label = getCachedLabel(pm, info)
-        val bannerBmp = getTvBannerBitmap(pm, info)
-        val appColor = getAppDominantColor(pkg, bannerBmp, settings.accentColor)
-
-        var breathingAnim: ValueAnimator? = null
-        var styleListener: (() -> Unit)? = null
-
-        val wrapper = object : FrameLayout(ctx) {
-            override fun onDetachedFromWindow() {
-                super.onDetachedFromWindow()
-                breathingAnim?.cancel()
-                breathingAnim = null
-                styleListener?.let { settings.removeStyleListener(it) }
-            }
-        }.apply {
-            layoutParams = LinearLayout.LayoutParams(w, h)
-            clipChildren = false
-            clipToPadding = false
+        val prefix = if (isHiddenMode) "hidden_" else if (isFavRow) "fav_" else "all_"
+        val iconDrawable = try { info.loadIcon(pm) } catch (_: Exception) { null }
+        val dominantCol = extractDominantColor(pkg, iconDrawable, settings.accentColor)
+        val surface = FocusAppGlowDesign(ctx, settings, dominantCol).apply {
+            tag = "$prefix$pkg"
             isFocusable = true
             isClickable = true
-            tag = if (isFavRow) "fav_$pkg" else "all_$pkg"
+            isLongClickable = true
         }
-
-        val unitContainer = LinearLayout(ctx).apply {
-            tag = "unit_container"
+        val inner = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            clipChildren = false
-            clipToPadding = false
+            val padH = LayoutMetrics.dynamicSpace(ctx, 0.008f, 6, 12, true)
+            val padV = LayoutMetrics.dynamicSpace(ctx, 0.006f, 4, 10, false)
+            setPadding(padH, padV, padH, padV)
         }
-
-        val innerCard = FocusAppGlowDesign(ctx).apply {
-            tag = "glow_card"
-            isFocusable = false
-            isClickable = false
-            clipChildren = false
-            setStyle(settings.accentColor, settings.tileShape, settings.tileColor, appColor)
+        val iconBox = FrameLayout(ctx)
+        val iconSize = (minOf(w, h) * 0.44f).toInt().coerceAtLeast(LayoutMetrics.dp(ctx, 26))
+        val iconView = ImageView(ctx).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            if (iconDrawable != null) setImageDrawable(iconDrawable)
         }
-
-        val listener: () -> Unit = {
-            if (wrapper.isAttachedToWindow) {
-                innerCard.setStyle(settings.accentColor, settings.tileShape, settings.tileColor, appColor)
+        iconBox.addView(iconView, FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER))
+        val badgeStr = settings.iconBadge
+        if (badgeStr.isNotEmpty()) {
+            val badgeTv = TextView(ctx).apply {
+                text = badgeStr
+                textSize = 9.5f
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.argb(215, 22, 28, 46))
+                    setStroke(LayoutMetrics.dp(ctx, 1), Color.argb(120, 255, 255, 255))
+                }
             }
+            val bSize = LayoutMetrics.dp(ctx, 18)
+            iconBox.addView(badgeTv, FrameLayout.LayoutParams(bSize, bSize, Gravity.BOTTOM or Gravity.END))
         }
-        styleListener = listener
-        settings.addStyleListener(listener)
-
-        val iv = ImageView(ctx).apply {
-            tag = "tile_icon"
-            setImageBitmap(bannerBmp)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-        }
-        innerCard.addView(iv, FrameLayout.LayoutParams(-1, -1))
-        unitContainer.addView(innerCard, LinearLayout.LayoutParams(-1, 0, 1f))
-
-        val namePlate = FrameLayout(ctx).apply {
-            tag = "name_plate"
-            outlineProvider = null
-            setPadding(dp(ctx, 8), dp(ctx, 2), dp(ctx, 8), dp(ctx, 2))
-            background = nameplateBg(ctx, false, appColor)
-        }
-        val tv = TextView(ctx).apply {
+        val labelTv = TextView(ctx).apply {
             tag = "tile_label"
             text = label
-            textSize = if (settings.columns > 6) 8.8f else 9.8f
-            setTextColor(Color.WHITE)
+            textSize = 10.5f
             typeface = Typeface.DEFAULT_BOLD
-            isSingleLine = true
-            ellipsize = TextUtils.TruncateAt.END
             gravity = Gravity.CENTER
-        }
-        namePlate.addView(tv, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
-        namePlate.visibility = when (settings.nameplateMode) {
-            "hidden" -> View.GONE
-            "focus" -> View.INVISIBLE
-            else -> View.VISIBLE
-        }
-        unitContainer.addView(namePlate, LinearLayout.LayoutParams(-1, -2).apply {
-            leftMargin = dp(ctx, 4)
-            rightMargin = dp(ctx, 4)
-            topMargin = dp(ctx, 4)
-        })
-
-        wrapper.addView(unitContainer, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
-
-        // Animate glow, scale, motion style, and nameplate state on focus changes.
-        wrapper.setOnFocusChangeListener { v, hasFocus ->
-            val dx = if (lastFocusedX >= 0f) (v.x - lastFocusedX).coerceIn(-1f, 1f) else 0f
-            val dy = if (lastFocusedY >= 0f) (v.y - lastFocusedY).coerceIn(-1f, 1f) else 0f
-            if (hasFocus) {
-                lastFocusedX = v.x
-                lastFocusedY = v.y
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            visibility = when (settings.nameplateMode) {
+                "hidden" -> View.GONE
+                "focus", "focus_only" -> View.INVISIBLE
+                else -> View.VISIBLE
             }
-
-            innerCard.setFocusState(hasFocus)
-            namePlate.background = nameplateBg(ctx, hasFocus, appColor)
-            if (settings.nameplateMode == "focus") {
-                namePlate.visibility = if (hasFocus) View.VISIBLE else View.INVISIBLE
-            }
-            AnimationController.animateFocus(unitContainer, hasFocus, settings.motionStyle, 1.09f, 12f, dx, dy)
-
-            if (hasFocus) {
-                tv.isSelected = true
-                breathingAnim?.cancel()
-                breathingAnim = ValueAnimator.ofFloat(0f, 1f).apply {
-                    duration = 1250L
-                    repeatMode = ValueAnimator.REVERSE
-                    repeatCount = ValueAnimator.INFINITE
-                    interpolator = AccelerateDecelerateInterpolator()
-                    addUpdateListener { anim ->
-                        val f = anim.animatedValue as Float
-                        innerCard.updateGlowPulse(f)
-                    }
-                    start()
-                }
-            } else {
-                tv.isSelected = false
-                breathingAnim?.cancel()
-                breathingAnim = null
-            }
+            setTextColor(Themes.getPrimaryTextColor(settings.tileColor))
         }
-
-        val openDialog = {
+        inner.addView(iconBox, LinearLayout.LayoutParams(-2, -2))
+        inner.addView(labelTv, LinearLayout.LayoutParams(-1, -2).apply { topMargin = LayoutMetrics.dp(ctx, 5) })
+        surface.addView(inner, FrameLayout.LayoutParams(-1, -1))
+        if (isFav && !isHiddenMode) {
+            val starTv = TextView(ctx).apply {
+                text = "★"
+                textSize = 10.5f
+                setTextColor(Color.rgb(251, 191, 36))
+            }
+            val m = LayoutMetrics.dp(ctx, 7)
+            surface.addView(starTv, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
+                topMargin = m; rightMargin = m
+            })
+        }
+        val openContextMenu = {
             AppMenuDialogDesign.show(
                 ctx = ctx,
+                pm = pm,
+                settings = settings,
                 pkg = pkg,
-                appName = label,
+                label = label,
+                isFavRow = isFavRow,
                 isFav = isFav,
-                canMoveLeft = isFavRow && canMoveLeft,
-                canMoveRight = isFavRow && canMoveRight,
-                accent = settings.accentColor,
-                isHiddenMode = false,
+                canMoveLeft = canMoveLeft,
+                canMoveRight = canMoveRight,
+                isHiddenMode = isHiddenMode,
+                onLaunch = { launchApp(ctx, pm, pkg) },
                 onToggleFav = { actions.onToggleFavorite(pkg, label) },
                 onMoveFav = { delta -> actions.onMoveFavorite(pkg, delta) },
-                onHideOrUnhideApp = { actions.onHideApp(pkg, label) }
+                onHideOrUnhide = { actions.onHideApp(pkg, label) }
             )
         }
-
-        wrapper.setOnClickListener {
-            try {
-                val launchIntent = pm.getLaunchIntentForPackage(pkg)
-                if (launchIntent != null) ctx.startActivity(launchIntent)
-                else Toast.makeText(ctx, "App cannot be launched", Toast.LENGTH_SHORT).show()
-            } catch (_: Exception) {
-                Toast.makeText(ctx, "App not found", Toast.LENGTH_SHORT).show()
+        surface.setOnFocusChangeListener { v, hasFocus ->
+            AnimationController.animateFocus(v, hasFocus, settings.motionStyle, 1.07f, 10f)
+            surface.setFocusVisualActive(hasFocus)
+            if (settings.nameplateMode == "focus" || settings.nameplateMode == "focus_only") {
+                labelTv.visibility = if (hasFocus) View.VISIBLE else View.INVISIBLE
             }
         }
-
-        wrapper.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN &&
-                (keyCode == KeyEvent.KEYCODE_MENU || (keyCode == KeyEvent.KEYCODE_DPAD_CENTER && event.isLongPress))
-            ) {
-                openDialog()
+        surface.setOnClickListener { v ->
+            if (isHiddenMode) {
+                openContextMenu()
+            } else {
+                v.animate().scaleX(0.94f).scaleY(0.94f).setDuration(90L).withEndAction {
+                    v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(110L).start()
+                    launchApp(ctx, pm, pkg)
+                }.start()
+            }
+        }
+        surface.setOnLongClickListener {
+            openContextMenu()
+            true
+        }
+        surface.setOnKeyListener { _, keyCode, event ->
+            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_MENU) {
+                openContextMenu()
                 true
             } else false
         }
-
-        wrapper.setOnLongClickListener {
-            openDialog()
-            true
-        }
-
-        return wrapper
+        return surface
     }
-
-    // Updates banner card style, label size, and nameplate visibility in-place.
-    fun updateTileAppearance(ctx: Context, wrapper: View, settings: AppSettings) {
-        val rawTag = (wrapper.tag as? String)?.removePrefix("fav_")?.removePrefix("all_") ?: ""
-        val appCol = colorCache[rawTag] ?: settings.accentColor
-        wrapper.findViewWithTag<FocusAppGlowDesign>("glow_card")?.let { card ->
-            card.setStyle(settings.accentColor, settings.tileShape, settings.tileColor, appCol)
-        }
-        wrapper.findViewWithTag<TextView>("tile_label")?.textSize = if (settings.columns > 6) 8.8f else 9.8f
-        wrapper.findViewWithTag<View>("name_plate")?.visibility = when (settings.nameplateMode) {
+    // Updates label color and nameplate visibility in-place when settings change without rebuilding views.
+    fun updateTileAppearance(tile: View, settings: AppSettings) {
+        val labelTv = tile.findViewWithTag<TextView>("tile_label")
+        labelTv?.setTextColor(Themes.getPrimaryTextColor(settings.tileColor))
+        labelTv?.visibility = when (settings.nameplateMode) {
             "hidden" -> View.GONE
-            "focus" -> if (wrapper.hasFocus()) View.VISIBLE else View.INVISIBLE
+            "focus", "focus_only" -> if (tile.hasFocus()) View.VISIBLE else View.INVISIBLE
             else -> View.VISIBLE
         }
+        tile.invalidate()
     }
-
-    private fun nameplateBg(ctx: Context, focused: Boolean, accentColor: Int) = GradientDrawable(
-        GradientDrawable.Orientation.LEFT_RIGHT,
-        if (focused) intArrayOf(LayoutMetrics.withAlpha(accentColor, 225), LayoutMetrics.withAlpha(accentColor, 145))
-        else intArrayOf(LayoutMetrics.withAlpha(accentColor, 95), Color.argb(115, 18, 26, 54))
-    ).apply {
-        cornerRadius = LayoutMetrics.dpF(ctx, 8f)
-        setStroke(dp(ctx, 1), if (focused) Color.WHITE else LayoutMetrics.withAlpha(accentColor, 150))
+    // Launches the target package using Leanback intent first and standard launcher intent as fallback.
+    private fun launchApp(ctx: Context, pm: PackageManager, pkg: String) {
+        val launchIntent = pm.getLeanbackLaunchIntentForPackage(pkg) ?: pm.getLaunchIntentForPackage(pkg)
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try { ctx.startActivity(launchIntent) } catch (_: Exception) {}
+        }
     }
-
-    private fun dp(ctx: Context, v: Int): Int = LayoutMetrics.dp(ctx, v)
 }

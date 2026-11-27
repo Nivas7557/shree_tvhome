@@ -208,13 +208,13 @@ object MoodPresets {
                     Toast.makeText(ctx, "${preset.title} Mood Applied", Toast.LENGTH_SHORT).show()
                 }
 
-                card.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-                    override fun onViewAttachedToWindow(v: View) {}
-                        override fun onViewDetachedFromWindow(v: View) {
-                        cardUpdaters.remove(syncCard)
-                        settings.removeStyleListener(refreshAllCards)
-                    }
-                    })
+              card.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                  override fun onViewAttachedToWindow(v: View) {}
+                  override fun onViewDetachedFromWindow(v: View) {
+                      cardUpdaters.remove(syncCard)
+                      if (cardUpdaters.isEmpty()) settings.removeStyleListener(refreshAllCards)
+                  }
+              })
                 row.addView(card, LinearLayout.LayoutParams(0, -2, 1f).apply {
                 if (colIdx < rowItems.lastIndex) rightMargin = hGap
                 })

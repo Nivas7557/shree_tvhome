@@ -20,5 +20,5 @@ shree_tvhome/├── build.gradle├── gradle.properties├── settings
 │           │   └── values/└── strings.xml      
 │           └── java/└── shree/└── tvhome/├── MainActivity.kt├── FocusRouter.kt├── HomeScreen.kt├── PanelHub.kt├── TopHeaderBar.kt
 │                                         ├── core/├── AppSettings.kt├── Themes.kt├── AnimationController.kt├── LiveBackdrop.kt├── LayoutMetrics.kt├── DeviceSpecs.kt├── AlertsListener.kt├── SleepReminderReceiver.kt└── MoodPresets.kt
-│                                         ├── design/├── AppsShelfDesign.kt├── SpatialGridDesign.kt├── AppTileDesign.kt├── FocusAppGlowDesign.kt├── GreetingCardDesign.kt├── ClockWeatherCardDesign.kt├── AppMenuDialogDesign.kt└── VectorGlyphDesign.kt  
+│                                         ├── design/├── AppsShelfDesign.kt├── SpatialGridDesign.kt├── AppTileDesign.kt├── FocusAppGlowDesign.kt├── GreetingCardDesign.kt├──CinemaConveyorShelf.kt├── ClockWeatherCardDesign.kt├── AppMenuDialogDesign.kt└── VectorGlyphDesign.kt  
 │                                         └── panels/├── PanelSurfaceKit.kt├── StyleCustomizePanel.kt├── QuickControlsPanel.kt├── ClockWidgetPanel.kt├── PictureAudioPanel.kt├── WifiPanel.kt├── WallpaperPanel.kt├── AlertsPowerPanel.kt└── AvatarEditorPanel.kt
