@@ -545,9 +545,31 @@ class TopHeaderBar(
         }, 4200L)
     }
 
+    // Computes personalized greeting phrase and typography from Greeting Studio settings (without any Smart TV tag).
     fun refreshGreeting() {
-        greetingCard.updateGreeting(settings.userName, settings.greetingPhrase)
-        greetingCard.setAccentColor(settings.accentColor)
+        val name = settings.userName.ifBlank { "Shree" }
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val (timeGreeting, celestialEmoji) = when (hour) {
+            in 5..11 -> "Good Morning" to "☀️"
+            in 12..16 -> "Good Afternoon" to "🌤️"
+            in 17..21 -> "Good Evening" to "✨"
+            else -> "Good Night" to "🌙"
+        }
+
+        val fullPhrase = when (settings.greetingStyle) {
+            "minimal" -> "$celestialEmoji  $name"
+            "welcome" -> "$celestialEmoji  Welcome Back, $name"
+            "custom" -> {
+                val prefix = settings.greetingPhrase.ifBlank { "Hello" }
+                "$celestialEmoji  $prefix, $name"
+            }
+            else -> "$celestialEmoji  $timeGreeting, $name"
+        }
+
+        val fontSpec = shree.tvhome.core.Themes.GREETING_FONTS.find { it.key == settings.greetingFont }
+            ?: shree.tvhome.core.Themes.GREETING_FONTS.first()
+        greetingTv.typeface = android.graphics.Typeface.create(fontSpec.family, android.graphics.Typeface.BOLD)
+        greetingTv.text = fullPhrase
     }
 
     override fun onAttachedToWindow() {
