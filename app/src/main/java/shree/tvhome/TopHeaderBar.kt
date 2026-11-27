@@ -114,8 +114,8 @@ class TopHeaderBar(
         clipChildren = false
         clipToPadding = false
 
-        val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.054f, minDp = 34, maxDp = 48, horizontal = false)
-        val avatarSize = (barHeight * 2.25f).roundToInt()
+        val barHeight = LayoutMetrics.dynamicSpace(context, ratio = Themes.HEADER_BAR_HEIGHT_RATIO, minDp = Themes.HEADER_BAR_MIN_DP, maxDp = Themes.HEADER_BAR_MAX_DP, horizontal = false)
+        val avatarSize = (barHeight * Themes.AVATAR_SIZE_MULTIPLIER).roundToInt()
         val navGap = LayoutMetrics.dynamicSpace(context, ratio = 0.008f, minDp = 5, maxDp = 12, horizontal = true)
         val seamGap = LayoutMetrics.dpF(context, 4f)
         val avatarRadius = avatarSize / 2f
