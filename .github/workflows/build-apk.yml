@@ -1,6 +1,35 @@
-      # Important instructions:
-      # - Reuse a persistent debug.keystore stored in the private APK repo so every build has the exact same signature.
-      # - Keep source repo permissions read-only and preserve all existing verification and rotation steps untouched.
+# Important instructions:
+# - Automatically derive repository and branch targets without hardcoded build paths.
+# - Verify APK integrity before rotating builds in private storage; avoid history bloat.
+# - Reuse a persistent debug.keystore in private storage so every APK updates in-place without uninstalling.
+
+name: Android Debug APK
+
+# Trigger builds on demand from GitHub Actions.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # Restrict default permissions to read-only for the source repository.
+    permissions:
+      contents: read
+
+    steps:
+      # Checkout repository source code.
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      # Install Java 17 required for Android builds.
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Restore persistent debug.keystore from private repo (or initialize once if missing).
       - name: Restore or Initialize Persistent Debug Keystore
         env:
           PAT_TOKEN: ${{ secrets.TESTER_REPO_TOKEN }}
