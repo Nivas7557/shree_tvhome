@@ -230,7 +230,7 @@ object StyleCustomizePanel {
         addDynamicRowGrid(panel, listOf(shapeCard, nameplateCard), summaryCols, tileH, gapH, gapV)
 
         findSavedShape = InlineStyleSubMenus.populateOptionChips(
-            ctx, shapeSubMenu, settings, Themes.TILE_SHAPES.map { it.key to it.label },
+            ctx, shapeSubMenu, settings, Themes.TILE_SHAPES.map { spec -> spec.key to spec.label },
             optH = optH, gapH = gapH,
             getCommitted = { savedTileShape }, getCurrent = { settings.tileShape },
             onPreview = { settings.tileShape = it; onLiveRefresh() },
