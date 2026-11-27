@@ -562,3 +562,20 @@ object StyleCustomizePanel {
         }
         dialog.show()
     }
+
+    private fun makeDialogBtn(ctx: Context, settings: AppSettings, label: String, highlight: Boolean, onClick: () -> Unit) = TextView(ctx).apply {
+        text = label
+        textSize = 10.5f
+        typeface = Typeface.DEFAULT_BOLD
+        setTextColor(Color.WHITE)
+        gravity = Gravity.CENTER
+        isFocusable = true
+        isClickable = true
+        background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, highlight, settings.tileColor)
+        setOnFocusChangeListener { v, f ->
+            AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 4f)
+            v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, f || highlight, settings.tileColor)
+        }
+        setOnClickListener { onClick() }
+    }
+}
