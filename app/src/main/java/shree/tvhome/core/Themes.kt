@@ -57,11 +57,16 @@ object Themes {
         val handScaleRatio: Float = 1.0f,
         val cornerRadiusRatio: Float = 0.35f
     )
-    // Shared proportional header and avatar metrics so TopHeaderBar and HomeScreen stay synchronized.
-    const val HEADER_BAR_HEIGHT_RATIO = 0.052f
-    const val HEADER_BAR_MIN_DP = 34
-    const val HEADER_BAR_MAX_DP = 46
-    const val AVATAR_SIZE_MULTIPLIER = 2.25f
+    // Shared proportional screen height ratios (13% Header/Avatar + 21% Favorites + 62.5% App Shelf + 3.5% Gaps).
+    const val HEADER_BAR_HEIGHT_RATIO = 0.050f
+    const val HEADER_BAR_MIN_DP = 32
+    const val HEADER_BAR_MAX_DP = 44
+    const val AVATAR_SIZE_MULTIPLIER = 2.10f
+    const val AVATAR_TOP_CLEARANCE_RATIO = 0.62f
+    const val AVATAR_BOTTOM_GAP_RATIO = 0.68f
+    const val FAV_BAND_HEIGHT_RATIO = 0.21f
+    const val SHELF_BAND_GAP_RATIO = 0.015f
+
     // Glass surface palettes shared across tiles, panels, and stage surfaces.
     val THEMES = listOf(
         ThemeSpec(
