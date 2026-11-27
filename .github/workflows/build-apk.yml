@@ -79,9 +79,9 @@ jobs:
           STAMP=$(TZ='Asia/Kolkata' date +'%I-%M_%p_%d-%m')
           echo "dt=$STAMP" >> $GITHUB_OUTPUT
 
-      # Compile debug APK.
+      # Compile debug APK using parallel workers and incremental build cache.
       - name: Build debug APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug --build-cache --parallel
 
       # Validate that the APK exists, is non-empty, and parses cleanly with aapt2.
       - name: Verify and Parse Generated APK
