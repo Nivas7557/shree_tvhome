@@ -168,11 +168,18 @@ object Themes {
     )
 
     val TILE_SHAPES = listOf(
-        TileShapeSpec("squircle", "Squircle", 24f),
-        TileShapeSpec("circle", "Circle", 999f),
-        TileShapeSpec("heart", "Heart", 28f),
-        TileShapeSpec("rounded", "Classic", 14f)
+        OptionSpec("squircle", "Squircle"),
+        OptionSpec("circle", "Circle"),
+        OptionSpec("heart", "Heart"),
+        OptionSpec("rounded", "Classic")
     )
+
+    fun getCornerRadiusDp(shapeKey: String?): Float = when (shapeKey) {
+        "circle" -> 999f
+        "heart" -> 28f
+        "rounded" -> 14f
+        else -> 24f
+    }
 
 
     // Single source of truth for clock widget styles; add/remove/edit entries here to sync everywhere.
