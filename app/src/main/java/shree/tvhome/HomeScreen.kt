@@ -51,7 +51,8 @@ class HomeScreen(
 
         val hPad = LayoutMetrics.screenHorizontalPadding(context)
         val vPad = LayoutMetrics.screenVerticalPadding(context)
-        val barHeight = LayoutMetrics.dynamicSpace(context, ratio = 0.050f, minDp = 32, maxDp = 44, horizontal = false)
+	    val barHeight = LayoutMetrics.dynamicSpace(context, ratio = Themes.HEADER_BAR_HEIGHT_RATIO, minDp = Themes.HEADER_BAR_MIN_DP, maxDp = Themes.HEADER_BAR_MAX_DP, horizontal = false)
+
         // Avatar diameter is 2.25x barHeight (extends 0.625x above and 0.625x below barHeight); add proportional safety margin.
         val topAvatarPad = maxOf(vPad, (barHeight * 0.72f).toInt())
         val bottomAvatarGap = (barHeight * 0.74f).toInt()
