@@ -47,21 +47,16 @@ class HomeScreen(
         clipChildren = false
         clipToPadding = false
         val hPad = LayoutMetrics.screenHorizontalPadding(context)
-        val vPad = LayoutMetrics.screenVerticalPadding(context)
-        val barHeight = LayoutMetrics.dynamicSpace(
-            context,
-            ratio = Themes.HEADER_BAR_HEIGHT_RATIO,
-            minDp = Themes.HEADER_BAR_MIN_DP,
-            maxDp = Themes.HEADER_BAR_MAX_DP,
-            horizontal = false
-        )
-        val avatarOverhangRatio = (Themes.AVATAR_SIZE_MULTIPLIER - 1f) / 2f
-        val topAvatarPad = maxOf(vPad, (barHeight * (avatarOverhangRatio + 0.10f)).toInt())
-        val bottomAvatarGap = (barHeight * (avatarOverhangRatio + 0.12f)).toInt()
-        val bandGap = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 8, maxDp = 14, horizontal = false)
-        setPadding(hPad, topAvatarPad, hPad, vPad / 2)
+        val hPad = LayoutMetrics.screenHorizontalPadding(context)
+        val topBarHeight = LayoutMetrics.dynamicSpace(context, ratio = Themes.HEADER_BAR_HEIGHT_RATIO, minDp = Themes.HEADER_BAR_MIN_DP, maxDp = Themes.HEADER_BAR_MAX_DP, horizontal = false)
+        val topAvatarPad = (topBarHeight * Themes.AVATAR_TOP_CLEARANCE_RATIO).toInt()
+        val bottomAvatarGap = (topBarHeight * Themes.AVATAR_BOTTOM_GAP_RATIO).toInt()
+        val bandGap = LayoutMetrics.dynamicSpace(context, ratio = Themes.SHELF_BAND_GAP_RATIO, minDp = 8, maxDp = 16, horizontal = false)
+        val bottomScreenPad = LayoutMetrics.dynamicSpace(context, ratio = 0.020f, minDp = 10, maxDp = 22, horizontal = false)
+        setPadding(hPad, topAvatarPad, hPad, bottomScreenPad)
         topBar = TopHeaderBar(context, settings, callbacks)
-        addView(topBar, LayoutParams(-1, barHeight).apply { bottomMargin = bottomAvatarGap })
+        addView(topBar, LayoutParams(-1, topBarHeight).apply { bottomMargin = bottomAvatarGap })
+
         contentArea = FrameLayout(context).apply {
             clipChildren = false
             clipToPadding = false
@@ -164,7 +159,7 @@ class HomeScreen(
         }
         favHScroll.addView(favRow)
         favSection.addView(favHScroll)
-        val favBandMaxH = LayoutMetrics.dynamicSpace(context, ratio = 0.21f, minDp = 118, maxDp = 168, horizontal = false)
+        val favBandMaxH = LayoutMetrics.dynamicSpace(context, ratio = Themes.FAV_BAND_HEIGHT_RATIO, minDp = 112, maxDp = 162, horizontal = false)
         bodyContainer.addView(favSection, LayoutParams(-1, favBandMaxH).apply { bottomMargin = bandGap })
         val shelfPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.014f, minDp = 12, maxDp = 22, horizontal = true)
         val shelfPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 18, horizontal = false)
