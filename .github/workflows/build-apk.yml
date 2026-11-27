@@ -29,35 +29,42 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # Restore persistent debug.keystore from private repo (or initialize once if missing).
+      # Restore persistent debug.keystore from private repo using git (or initialize once if missing).
       - name: Restore or Initialize Persistent Debug Keystore
         env:
           PAT_TOKEN: ${{ secrets.TESTER_REPO_TOKEN }}
           PRIVATE_REPO: 'Nivas7557/My_Generated_Apks'
           PRIVATE_BRANCH: 'main'
         run: |
-          mkdir -p ~/.android
-          KEYSTORE_URL="https://githubusercontent.com{PRIVATE_REPO}/${PRIVATE_BRANCH}/_signing/shree_tvhome_debug.keystore"
-          HTTP_CODE=$(curl -s -L -H "Authorization: token ${PAT_TOKEN}" -w "%{http_code}" -o ~/.android/debug.keystore "$KEYSTORE_URL")
-          if [ "$HTTP_CODE" != "200" ] || [ ! -s ~/.android/debug.keystore ]; then
-            rm -f ~/.android/debug.keystore
+          mkdir -p ~/.android _signing_sync
+          HOST="github.com"
+          REPO_URL="https://x-access-token:${PAT_TOKEN}@${HOST}/${PRIVATE_REPO}.git"
+          if git ls-remote --exit-code --heads "$REPO_URL" "$PRIVATE_BRANCH" >/dev/null 2>&1; then
+            git clone --depth 1 --branch "$PRIVATE_BRANCH" "$REPO_URL" _signing_sync
+          else
+            cd _signing_sync && git init && git remote add origin "$REPO_URL" && cd ..
+          fi
+
+          if [ -s _signing_sync/_signing/shree_tvhome_debug.keystore ]; then
+            cp _signing_sync/_signing/shree_tvhome_debug.keystore ~/.android/debug.keystore
+          else
             keytool -genkey -v -keystore ~/.android/debug.keystore \
               -storepass android -alias androiddebugkey -keypass android \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=ShreeTVHome,O=Android,C=IN"
-            mkdir -p _signing_sync
-            git clone --depth 1 --branch "$PRIVATE_BRANCH" "https://x-access-token:${PAT_TOKEN}@://github.com{PRIVATE_REPO}.git" _signing_sync
             mkdir -p _signing_sync/_signing
             cp ~/.android/debug.keystore _signing_sync/_signing/shree_tvhome_debug.keystore
             cd _signing_sync
+            git checkout -B "$PRIVATE_BRANCH"
             git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@://github.com"
+            git config user.email "github-actions[bot]@users.noreply.${HOST}"
             git add _signing/shree_tvhome_debug.keystore
             git commit -m "chore: store persistent debug signing keystore"
-            git push origin "$PRIVATE_BRANCH"
+            git push -f origin "$PRIVATE_BRANCH"
             cd ..
-            rm -rf _signing_sync
           fi
+          rm -rf _signing_sync
+
 
       # Set up Gradle build tool and caching.
       - name: Set up Gradle
