@@ -399,7 +399,8 @@ object StyleCustomizePanel {
         setOnClickListener { v -> onClick(v) }
         addView(titleTv); addView(subTv)
     }
-    // Opens the Greeting & Typography Studio dialog with live preview, 4 phrase modes, and 3 font families.
+
+                    // Opens the Greeting & Typography Studio dialog with live preview, 4 phrase modes, and 3 font families.
     private fun showGreetingDialog(ctx: Context, settings: AppSettings, onLiveRefresh: () -> Unit, onRefreshPanel: () -> Unit) {
         val dialog = Dialog(ctx).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
         val padH = LayoutMetrics.dynamicSpace(ctx, 0.022f, 16, 28, true)
@@ -429,7 +430,6 @@ object StyleCustomizePanel {
             setPadding(0, 0, 0, gap)
         })
 
-        // Live Greeting Preview Pill
         val previewTv = TextView(ctx).apply {
             textSize = 13f
             gravity = Gravity.CENTER
@@ -474,9 +474,11 @@ object StyleCustomizePanel {
             input.visibility = if (selectedStyle == "custom") View.VISIBLE else View.GONE
         }
 
-        // 1. Greeting Phrase Style Chips
         val styleRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         val styleViews = ArrayList<TextView>()
+        val chipPadH = LayoutMetrics.dp(ctx, 6)
+        val chipPadV = LayoutMetrics.dp(ctx, 8)
+
         Themes.GREETING_STYLES.forEachIndexed { idx, spec ->
             val chip = TextView(ctx).apply {
                 text = spec.label
@@ -484,7 +486,7 @@ object StyleCustomizePanel {
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
                 isFocusable = true; isClickable = true
-                setPadding(dp(ctx, 6), dp(ctx, 8), dp(ctx, 6), dp(ctx, 8))
+                setPadding(chipPadH, chipPadV, chipPadH, chipPadV)
                 setOnClickListener {
                     selectedStyle = spec.key
                     styleViews.forEachIndexed { i, v ->
@@ -507,7 +509,6 @@ object StyleCustomizePanel {
         }
         box.addView(styleRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gap })
 
-        // 2. Greeting Font Family Chips
         val fontRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         val fontViews = ArrayList<TextView>()
         Themes.GREETING_FONTS.forEachIndexed { idx, fSpec ->
@@ -517,7 +518,7 @@ object StyleCustomizePanel {
                 typeface = Typeface.create(fSpec.family, Typeface.BOLD)
                 gravity = Gravity.CENTER
                 isFocusable = true; isClickable = true
-                setPadding(dp(ctx, 6), dp(ctx, 8), dp(ctx, 6), dp(ctx, 8))
+                setPadding(chipPadH, chipPadV, chipPadH, chipPadV)
                 setOnClickListener {
                     selectedFont = fSpec.key
                     fontViews.forEachIndexed { i, v ->
@@ -561,20 +562,3 @@ object StyleCustomizePanel {
         }
         dialog.show()
     }
-
-    private fun makeDialogBtn(ctx: Context, settings: AppSettings, label: String, highlight: Boolean, onClick: () -> Unit) = TextView(ctx).apply {
-        text = label
-        textSize = 10.5f
-        typeface = Typeface.DEFAULT_BOLD
-        setTextColor(Color.WHITE)
-        gravity = Gravity.CENTER
-        isFocusable = true
-        isClickable = true
-        background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, highlight, settings.tileColor)
-        setOnFocusChangeListener { v, f ->
-            AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 4f)
-            v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, f || highlight, settings.tileColor)
-        }
-        setOnClickListener { onClick() }
-    }
-}
