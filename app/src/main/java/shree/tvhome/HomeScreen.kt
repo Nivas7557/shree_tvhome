@@ -47,7 +47,6 @@ class HomeScreen(
         clipChildren = false
         clipToPadding = false
         val hPad = LayoutMetrics.screenHorizontalPadding(context)
-        val hPad = LayoutMetrics.screenHorizontalPadding(context)
         val topBarHeight = LayoutMetrics.dynamicSpace(context, ratio = Themes.HEADER_BAR_HEIGHT_RATIO, minDp = Themes.HEADER_BAR_MIN_DP, maxDp = Themes.HEADER_BAR_MAX_DP, horizontal = false)
         val topAvatarPad = (topBarHeight * Themes.AVATAR_TOP_CLEARANCE_RATIO).toInt()
         val bottomAvatarGap = (topBarHeight * Themes.AVATAR_BOTTOM_GAP_RATIO).toInt()
@@ -284,7 +283,6 @@ class HomeScreen(
             clipToPadding = false
         }
         embeddedShelfWell.addView(appGrid, LayoutParams(-1, 0, 1f))
-        val shelfBottomMargin = vPad / 2
         bodyContainer.addView(embeddedShelfWell, LayoutParams(-1, 0, 1f).apply { bottomMargin = shelfBottomMargin })
     }
     fun setRightStageInset(rightStageWidthPx: Int) {
