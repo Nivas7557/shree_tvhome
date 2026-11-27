@@ -1,7 +1,6 @@
 // Important instructions:
-// - Reserve clean top & bottom avatar clearance so TopHeaderBar never overlaps Favorites or crops at the screen top.
-// - Keep Favorites band fixed in height and render the 3-band CinemaConveyorShelf inside a transparent gradient-rim box.
-
+// - Reserve clean top & bottom avatar clearance using shared Themes metrics so TopHeaderBar never overlaps Favorites.
+// - Render the 3-band CinemaConveyorShelf inside a 3D embedded recessed glass well with proportional depth shadows and specular rim.
 package shree.tvhome
 
 import android.content.Context
@@ -9,6 +8,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
@@ -31,7 +31,6 @@ class HomeScreen(
     onSortChanged: () -> Unit,
     private val onHiddenRibbonClosed: (String?) -> Unit
 ) : LinearLayout(context) {
-
     val topBar: TopHeaderBar
     val contentArea: FrameLayout
     val bodyContainer: LinearLayout
@@ -43,40 +42,37 @@ class HomeScreen(
     val favCount: TextView
     val appGrid: LinearLayout
     val allCount: TextView
-
     init {
         orientation = VERTICAL
         clipChildren = false
         clipToPadding = false
-
         val hPad = LayoutMetrics.screenHorizontalPadding(context)
         val vPad = LayoutMetrics.screenVerticalPadding(context)
-	    val barHeight = LayoutMetrics.dynamicSpace(context, ratio = Themes.HEADER_BAR_HEIGHT_RATIO, minDp = Themes.HEADER_BAR_MIN_DP, maxDp = Themes.HEADER_BAR_MAX_DP, horizontal = false)
-
-        // Avatar diameter is 2.25x barHeight (extends 0.625x above and 0.625x below barHeight); add proportional safety margin.
-        val topAvatarPad = maxOf(vPad, (barHeight * 0.72f).toInt())
-        val bottomAvatarGap = (barHeight * 0.74f).toInt()
+        val barHeight = LayoutMetrics.dynamicSpace(
+            context,
+            ratio = Themes.HEADER_BAR_HEIGHT_RATIO,
+            minDp = Themes.HEADER_BAR_MIN_DP,
+            maxDp = Themes.HEADER_BAR_MAX_DP,
+            horizontal = false
+        )
+        val avatarOverhangRatio = (Themes.AVATAR_SIZE_MULTIPLIER - 1f) / 2f
+        val topAvatarPad = maxOf(vPad, (barHeight * (avatarOverhangRatio + 0.10f)).toInt())
+        val bottomAvatarGap = (barHeight * (avatarOverhangRatio + 0.12f)).toInt()
         val bandGap = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 8, maxDp = 14, horizontal = false)
-
-        // Match bottom padding with PanelHub's bottomMargin so App Shelf and Side Panel bottom edges align identically.
         setPadding(hPad, topAvatarPad, hPad, vPad / 2)
-
         topBar = TopHeaderBar(context, settings, callbacks)
         addView(topBar, LayoutParams(-1, barHeight).apply { bottomMargin = bottomAvatarGap })
-
         contentArea = FrameLayout(context).apply {
             clipChildren = false
             clipToPadding = false
         }
         addView(contentArea, LayoutParams(-1, 0, 1f))
-
         bodyContainer = LinearLayout(context).apply {
             orientation = VERTICAL
             clipChildren = false
             clipToPadding = false
         }
         contentArea.addView(bodyContainer, FrameLayout.LayoutParams(-1, -1))
-
         val ribbonPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 18, horizontal = true)
         val ribbonPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.008f, minDp = 6, maxDp = 12, horizontal = false)
         hiddenSection = LinearLayout(context).apply {
@@ -115,7 +111,6 @@ class HomeScreen(
         }
         hiddenHeader.addView(closeHiddenBtn, LayoutParams(-2, -2).apply { leftMargin = ribbonPadH })
         hiddenSection.addView(hiddenHeader)
-
         val hiddenHScroll = HorizontalScrollView(context).apply {
             isFocusable = false
             isHorizontalScrollBarEnabled = false
@@ -131,7 +126,6 @@ class HomeScreen(
         hiddenHScroll.addView(hiddenRow)
         hiddenSection.addView(hiddenHScroll)
         bodyContainer.addView(hiddenSection, LayoutParams(-1, -2).apply { bottomMargin = bandGap })
-        // Persistent Favorites ribbon with transparent backdrop and glossy header pill.
         favSection = LinearLayout(context).apply {
             orientation = VERTICAL
             clipChildren = false
@@ -156,7 +150,6 @@ class HomeScreen(
         }
         favCount = favHeader.findViewWithTag("count_tv")
         favSection.addView(favHeader)
-
         val favHScroll = HorizontalScrollView(context).apply {
             isFocusable = false
             isHorizontalScrollBarEnabled = false
@@ -171,57 +164,89 @@ class HomeScreen(
         }
         favHScroll.addView(favRow)
         favSection.addView(favHScroll)
-        // Keep Favorites ribbon compact (~20% proportional height) cleanly below the circular avatar.
         val favBandMaxH = LayoutMetrics.dynamicSpace(context, ratio = 0.21f, minDp = 118, maxDp = 168, horizontal = false)
         bodyContainer.addView(favSection, LayoutParams(-1, favBandMaxH).apply { bottomMargin = bandGap })
-
-        val shelfPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 18, horizontal = true)
-        val shelfPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.010f, minDp = 8, maxDp = 14, horizontal = false)
-
-        // Transparent App Shelf with thick luminous gradient rounding rim (Google TV / YouTube rim style).
-        val glossyShelfBox = object : LinearLayout(context) {
-            private val rimOuterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-            private val rimInnerSheenPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-            private val boxRect = RectF()
+        val shelfPadH = LayoutMetrics.dynamicSpace(context, ratio = 0.014f, minDp = 12, maxDp = 22, horizontal = true)
+        val shelfPadV = LayoutMetrics.dynamicSpace(context, ratio = 0.012f, minDp = 10, maxDp = 18, horizontal = false)
+        // 3D Embedded Recessed Glass Well with top-left depth shadow, inner bevel, and bottom-right specular rim.
+        val embeddedShelfWell = object : LinearLayout(context) {
+            private val cavityFillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            private val topDepthShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            private val leftDepthShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            private val bottomHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            private val bevelRimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+            private val outerRimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+            private val wellRect = RectF()
             private val innerRect = RectF()
-
+            private val clipPath = Path()
             override fun onDraw(canvas: Canvas) {
                 val w = width.toFloat()
                 val h = height.toFloat()
                 if (w <= 0f || h <= 0f) return
-
-                val strokeW = (minOf(w, h) * 0.012f).coerceIn(LayoutMetrics.dpF(context, 2.5f), LayoutMetrics.dpF(context, 5.5f))
-                val halfStroke = strokeW / 2f
-                val cornerR = LayoutMetrics.dpF(context, 24f)
-
-                boxRect.set(halfStroke, halfStroke, w - halfStroke, h - halfStroke)
-                val accentSpec = Themes.getAccentSpec(settings.accentColor, settings.accentName)
-                val c1 = accentSpec.gradientColors.firstOrNull() ?: settings.accentColor
-                val c2 = accentSpec.gradientColors.lastOrNull() ?: settings.accentColor
-
-                rimOuterPaint.strokeWidth = strokeW
-                rimOuterPaint.shader = LinearGradient(
-                    0f, 0f, w, h,
-                    intArrayOf(
-                        Color.argb(230, 255, 255, 255),
-                        LayoutMetrics.withAlpha(c1, 235),
-                        Color.argb(145, 255, 255, 255),
-                        LayoutMetrics.withAlpha(c2, 235)
-                    ),
-                    floatArrayOf(0f, 0.34f, 0.68f, 1f),
+                val cornerR = LayoutMetrics.dynamicSpace(context, 0.022f, 18, 28, false).toFloat()
+                val bevelInset = LayoutMetrics.dpF(context, 2f)
+                wellRect.set(bevelInset, bevelInset, w - bevelInset, h - bevelInset)
+                clipPath.reset()
+                clipPath.addRoundRect(wellRect, cornerR, cornerR, Path.Direction.CW)
+                val themeCols = Themes.getTheme(settings.tileColor).normalColors
+                val deepBase = LayoutMetrics.withAlpha(themeCols.lastOrNull() ?: Color.rgb(10, 16, 36), 135)
+                val deepTop = LayoutMetrics.withAlpha(Color.rgb(6, 10, 24), 175)
+                canvas.save()
+                canvas.clipPath(clipPath)
+                // 1. Deep recessed cavity fill.
+                cavityFillPaint.shader = LinearGradient(
+                    0f, 0f, 0f, h,
+                    intArrayOf(deepTop, deepBase, LayoutMetrics.blendWithAccent(deepBase, settings.accentColor, 0.12f, 145)),
+                    floatArrayOf(0f, 0.55f, 1f),
                     Shader.TileMode.CLAMP
                 )
-                canvas.drawRoundRect(boxRect, cornerR, cornerR, rimOuterPaint)
-
-                val inset = strokeW + LayoutMetrics.dpF(context, 1f)
-                innerRect.set(inset, inset, w - inset, h - inset)
-                rimInnerSheenPaint.strokeWidth = LayoutMetrics.dpF(context, 0.9f)
-                rimInnerSheenPaint.color = Color.argb(85, 255, 255, 255)
+                canvas.drawRect(wellRect, cavityFillPaint)
+                // 2. Top & Left 3D inner cast shadow giving physical recessed depth.
+                val shadowDepth = LayoutMetrics.dynamicSpace(context, 0.032f, 16, 32, false).toFloat()
+                topDepthShadowPaint.shader = LinearGradient(
+                    0f, 0f, 0f, shadowDepth,
+                    intArrayOf(Color.argb(155, 0, 0, 0), Color.argb(45, 0, 0, 0), Color.TRANSPARENT),
+                    null, Shader.TileMode.CLAMP
+                )
+                canvas.drawRect(0f, 0f, w, shadowDepth, topDepthShadowPaint)
+                leftDepthShadowPaint.shader = LinearGradient(
+                    0f, 0f, shadowDepth * 0.85f, 0f,
+                    intArrayOf(Color.argb(115, 0, 0, 0), Color.TRANSPARENT),
+                    null, Shader.TileMode.CLAMP
+                )
+                canvas.drawRect(0f, 0f, shadowDepth * 0.85f, h, leftDepthShadowPaint)
+                // 3. Bottom & Right subtle bounce light inside the recessed floor.
+                val bounceH = shadowDepth * 0.75f
+                bottomHighlightPaint.shader = LinearGradient(
+                    0f, h - bounceH, 0f, h,
+                    intArrayOf(Color.TRANSPARENT, LayoutMetrics.withAlpha(settings.accentColor, 42)),
+                    null, Shader.TileMode.CLAMP
+                )
+                canvas.drawRect(0f, h - bounceH, w, h, bottomHighlightPaint)
+                canvas.restore()
+                // 4. Crisp 3D recessed bevel stroke (dark top-left edge transitioning to luminous accent bottom-right).
+                outerRimPaint.strokeWidth = LayoutMetrics.dpF(context, 2.2f)
+                outerRimPaint.shader = LinearGradient(
+                    0f, 0f, w, h,
+                    intArrayOf(
+                        Color.argb(150, 0, 0, 0),
+                        Color.argb(65, 255, 255, 255),
+                        LayoutMetrics.withAlpha(settings.accentColor, 210),
+                        Color.argb(215, 255, 255, 255)
+                    ),
+                    floatArrayOf(0f, 0.35f, 0.72f, 1f),
+                    Shader.TileMode.CLAMP
+                )
+                canvas.drawRoundRect(wellRect, cornerR, cornerR, outerRimPaint)
+                val innerInset = bevelInset + LayoutMetrics.dpF(context, 2f)
+                innerRect.set(innerInset, innerInset, w - innerInset, h - innerInset)
+                bevelRimPaint.strokeWidth = LayoutMetrics.dpF(context, 1f)
+                bevelRimPaint.color = Color.argb(48, 255, 255, 255)
                 canvas.drawRoundRect(
                     innerRect,
-                    (cornerR - inset).coerceAtLeast(4f),
-                    (cornerR - inset).coerceAtLeast(4f),
-                    rimInnerSheenPaint
+                    (cornerR - innerInset).coerceAtLeast(6f),
+                    (cornerR - innerInset).coerceAtLeast(6f),
+                    bevelRimPaint
                 )
                 super.onDraw(canvas)
             }
@@ -232,9 +257,8 @@ class HomeScreen(
             clipToPadding = true
             setPadding(shelfPadH, shelfPadV, shelfPadH, shelfPadV)
         }
-        settings.addStyleListener { glossyShelfBox.invalidate() }
-
-        // Top 5% glossy filled control ribbon inside the transparent rim box.
+        settings.addStyleListener { embeddedShelfWell.invalidate() }
+        // Header control bar inside the 3D recessed well.
         val allHeader = AppsShelfDesign.createHeader(
             context, "⊞  ALL APPS", isFavoritesRow = false, settings = settings, onSortChanged = onSortChanged
         ).apply {
@@ -246,39 +270,33 @@ class HomeScreen(
                 background = GradientDrawable(
                     GradientDrawable.Orientation.LEFT_RIGHT,
                     intArrayOf(
-                        LayoutMetrics.withAlpha(glassCols.first(), 215),
-                        LayoutMetrics.withAlpha(glassCols.last(), 230)
+                        LayoutMetrics.withAlpha(glassCols.first(), 210),
+                        LayoutMetrics.withAlpha(glassCols.last(), 225)
                     )
                 ).apply {
                     cornerRadius = LayoutMetrics.dpF(context, 14f)
-                    setStroke(LayoutMetrics.dp(context, 1), LayoutMetrics.withAlpha(settings.accentColor, 175))
+                    setStroke(LayoutMetrics.dp(context, 1), LayoutMetrics.withAlpha(settings.accentColor, 165))
                 }
             }
             syncRibbonBg()
             settings.addStyleListener(syncRibbonBg)
         }
         allCount = allHeader.findViewWithTag("count_tv")
-        glossyShelfBox.addView(allHeader, LayoutParams(-1, -2).apply { bottomMargin = shelfPadV / 2 })
-
-        // 3-band perspective conveyor stage (zero ScrollView, zero layout jumble).
+        embeddedShelfWell.addView(allHeader, LayoutParams(-1, -2).apply { bottomMargin = shelfPadV / 2 })
         appGrid = LinearLayout(context).apply {
             orientation = VERTICAL
             clipChildren = true
             clipToPadding = false
         }
-        glossyShelfBox.addView(appGrid, LayoutParams(-1, 0, 1f))
-        // Align glossy App Shelf bottom edge strictly with the right-hand Clock/Side Panel bottom margin.
-        val shelfBottomMargin = LayoutMetrics.screenVerticalPadding(context) / 2
-        bodyContainer.addView(glossyShelfBox, LayoutParams(-1, 0, 1f).apply { bottomMargin = shelfBottomMargin })
+        embeddedShelfWell.addView(appGrid, LayoutParams(-1, 0, 1f))
+        val shelfBottomMargin = vPad / 2
+        bodyContainer.addView(embeddedShelfWell, LayoutParams(-1, 0, 1f).apply { bottomMargin = shelfBottomMargin })
     }
-
     fun setRightStageInset(rightStageWidthPx: Int) {
         val gap = LayoutMetrics.dynamicSpace(context, ratio = 0.018f, minDp = 12, maxDp = 30, horizontal = true)
         bodyContainer.setPadding(0, 0, rightStageWidthPx + gap, 0)
     }
-
     fun isHiddenRibbonVisible(): Boolean = hiddenSection.visibility == View.VISIBLE
-
     fun openHiddenRibbon(onUnhideApp: (String, String) -> Unit) {
         AppsShelfDesign.populateHiddenRibbon(context, settings, hiddenSection, hiddenRow, hiddenCount, onUnhideApp)
         if (hiddenSection.visibility == View.VISIBLE) {
@@ -291,7 +309,6 @@ class HomeScreen(
                 .start()
         }
     }
-
     fun closeHiddenRibbon(focusPkg: String? = null) {
         if (hiddenSection.visibility != View.VISIBLE) return
         hiddenSection.animate()
