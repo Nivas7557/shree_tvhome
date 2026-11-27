@@ -557,16 +557,6 @@ class TopHeaderBar(
         )
     }
 
-        val effectiveGreeting = when (settings.greetingStyle) {
-            "minimal" -> celestialEmoji
-            "welcome" -> "$celestialEmoji Welcome Back"
-            "custom" -> "$celestialEmoji ${settings.greetingPhrase.ifBlank { "Hello" }}"
-            else -> "$celestialEmoji $timeGreeting"
-        }
-
-        greetingCard.updateProfile(name, effectiveGreeting)
-    }
-
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         if (!receiverRegistered) {
