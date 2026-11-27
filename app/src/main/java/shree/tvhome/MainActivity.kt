@@ -67,6 +67,32 @@ class MainActivity : Activity() {
         }
     }
 
+    // Receives D-Pad simulation commands from the external TV Remote Simulator overlay app.
+    private val remoteSimReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val actionName = intent?.getStringExtra("remote_action") ?: return
+            val keyCode = when (actionName) {
+                "UP" -> KeyEvent.KEYCODE_DPAD_UP
+                "DOWN" -> KeyEvent.KEYCODE_DPAD_DOWN
+                "LEFT" -> KeyEvent.KEYCODE_DPAD_LEFT
+                "RIGHT" -> KeyEvent.KEYCODE_DPAD_RIGHT
+                "OK", "LONG_OK" -> KeyEvent.KEYCODE_DPAD_CENTER
+                "BACK" -> KeyEvent.KEYCODE_BACK
+                else -> return
+            }
+            val now = android.os.SystemClock.uptimeMillis()
+            if (actionName == "LONG_OK") {
+                val target = window?.currentFocus
+                if (target != null && target.performLongClick()) return
+                dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 1, 0, -1, 0, KeyEvent.FLAG_LONG_PRESS))
+                dispatchKeyEvent(KeyEvent(now, now + 20L, KeyEvent.ACTION_UP, keyCode, 0))
+            } else {
+                dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0))
+                dispatchKeyEvent(KeyEvent(now, now + 20L, KeyEvent.ACTION_UP, keyCode, 0))
+            }
+        }
+    }
+
     // Scales base font/layout metrics adaptively according to display density and screen size.
     override fun attachBaseContext(newBase: Context) {
         val config = Configuration(newBase.resources.configuration)
@@ -100,9 +126,11 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(pkgReceiver, pkgFilter, RECEIVER_EXPORTED)
             registerReceiver(ambientReceiver, IntentFilter(ACTION_ENTER_AMBIENT), RECEIVER_NOT_EXPORTED)
+            registerReceiver(remoteSimReceiver, IntentFilter("shree.remote.sim.ACTION_REMOTE_KEY"), RECEIVER_EXPORTED)
         } else {
             registerReceiver(pkgReceiver, pkgFilter)
             registerReceiver(ambientReceiver, IntentFilter(ACTION_ENTER_AMBIENT))
+            registerReceiver(remoteSimReceiver, IntentFilter("shree.remote.sim.ACTION_REMOTE_KEY"))
         }
     }
 
@@ -111,6 +139,7 @@ class MainActivity : Activity() {
         super.onDestroy()
         try { unregisterReceiver(pkgReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(ambientReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(remoteSimReceiver) } catch (_: Exception) {}
         AppsShelfDesign.clearCache()
     }
 
@@ -133,7 +162,7 @@ class MainActivity : Activity() {
             }
         }
     }
-    
+
     // Routes D-Pad keys cleanly when the side panel hub is open or exits ambient mode on key press.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (isAmbientActive && event.action == KeyEvent.ACTION_DOWN) {
