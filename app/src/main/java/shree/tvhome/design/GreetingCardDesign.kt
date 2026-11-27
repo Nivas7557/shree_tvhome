@@ -100,8 +100,8 @@ class GreetingCardDesign(
         invalidate()
     }
 
-    // Updates greeting phrase and user name based on current hour or custom override.
-    fun updateGreeting(name: String, phrase: String) {
+    // Updates greeting phrase, font family, and user name based on Greeting Studio settings (preserving air-fog & avatar cutout).
+    fun updateGreeting(name: String, phrase: String, styleKey: String = "timeOfDay", fontFamily: String = "sans-serif-medium") {
         userName = name
         customPhrase = phrase
 
@@ -111,12 +111,17 @@ class GreetingCardDesign(
         val autoGreet = matched?.label ?: "Good Night"
 
         iconTv.text = emoji
+        titleTv.typeface = Typeface.create(fontFamily, Typeface.BOLD)
         val cleanName = userName.trim()
-        titleTv.text = when {
-            customPhrase.isNotBlank() && cleanName.isNotEmpty() -> "$customPhrase, $cleanName"
-            customPhrase.isNotBlank() -> customPhrase
-            cleanName.isNotEmpty() -> "$autoGreet, $cleanName"
-            else -> autoGreet
+
+        titleTv.text = when (styleKey) {
+            "minimal" -> cleanName.ifEmpty { autoGreet }
+            "welcome" -> if (cleanName.isNotEmpty()) "Welcome Back, $cleanName" else "Welcome Back"
+            "custom" -> {
+                val p = customPhrase.trim().ifEmpty { "Hello" }
+                if (cleanName.isNotEmpty()) "$p, $cleanName" else p
+            }
+            else -> if (cleanName.isNotEmpty()) "$autoGreet, $cleanName" else autoGreet
         }
     }
 
