@@ -1,24 +1,29 @@
 # Important instructions:
 # - Preserve all existing repository folders and rotated builds in private storage while keeping history bloat-free.
-# - Abort build if private storage clone fails so the persistent signing keystore is never overwritten.
+# - Reuse persistent debug keystore from private storage so APK updates install in-place without uninstalling.
+
 name: Android Debug APK
+
 on:
   workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
     steps:
       - name: Check out source
         uses: actions/checkout@v5
+
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      # Clone private repo safely; never overwrite an existing remote repo with a fresh keystore on network glitch.
-      - name: Clone Private Storage & Restore Keystore
+
+      # Restore persistent debug keystore from private repo without overwriting other folders.
+      - name: Restore or Initialize Persistent Debug Keystore
         env:
           PAT_TOKEN: ${{ secrets.TESTER_REPO_TOKEN }}
           PRIVATE_REPO: 'Nivas7557/My_Generated_Apks'
@@ -27,66 +32,59 @@ jobs:
           mkdir -p ~/.android
           HOST="github.com"
           REPO_URL="https://x-access-token:${PAT_TOKEN}@${HOST}/${PRIVATE_REPO}.git"
-          if git clone --depth 1 --branch "$PRIVATE_BRANCH" "$REPO_URL" private_apk_repo; then
-            echo "Cloned existing private storage repo."
-          elif [ -z "$(git ls-remote "$REPO_URL" 2>/dev/null)" ]; then
-            mkdir -p private_apk_repo
-            cd private_apk_repo
-            git init
-            git remote add origin "$REPO_URL"
-            git checkout -b "$PRIVATE_BRANCH"
-            cd ..
+
+          if git ls-remote --exit-code --heads "$REPO_URL" "$PRIVATE_BRANCH" >/dev/null 2>&1; then
+            git clone --depth 1 --branch "$PRIVATE_BRANCH" "$REPO_URL" _signing_sync
           else
-            echo "::error::Failed to clone private_apk_repo! Aborting so signing keystore is never overwritten."
-            exit 1
+            mkdir _signing_sync && cd _signing_sync && git init && git remote add origin "$REPO_URL" && git checkout -b "$PRIVATE_BRANCH" && cd ..
           fi
-          if [ -s private_apk_repo/_signing/shree_tvhome_debug.keystore ]; then
-            cp private_apk_repo/_signing/shree_tvhome_debug.keystore ~/.android/debug.keystore
-            echo "Restored persistent debug keystore."
+
+          if [ -s _signing_sync/_signing/shree_tvhome_debug.keystore ]; then
+            cp _signing_sync/_signing/shree_tvhome_debug.keystore ~/.android/debug.keystore
           else
             keytool -genkey -v -keystore ~/.android/debug.keystore \
               -storepass android -alias androiddebugkey -keypass android \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=ShreeTVHome,O=Android,C=IN"
-            mkdir -p private_apk_repo/_signing
-            cp ~/.android/debug.keystore private_apk_repo/_signing/shree_tvhome_debug.keystore
-            echo "Generated and saved new persistent debug keystore."
+            mkdir -p _signing_sync/_signing
+            cp ~/.android/debug.keystore _signing_sync/_signing/shree_tvhome_debug.keystore
+            cd _signing_sync
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.${HOST}"
+            git add _signing/shree_tvhome_debug.keystore
+            git commit -m "chore: save shree_tvhome persistent keystore"
+            git push origin "$PRIVATE_BRANCH"
+            cd ..
           fi
+          rm -rf _signing_sync
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
+
       - name: Get IST Time and Date
         id: timestamp
         run: |
           STAMP=$(TZ='Asia/Kolkata' date +'%I-%M_%p_%d-%m')
           echo "dt=$STAMP" >> $GITHUB_OUTPUT
+
       - name: Build debug APK
         run: gradle assembleDebug --build-cache --parallel
+
       - name: Verify and Parse Generated APK
         run: |
           APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
-          if [ ! -f "$APK_PATH" ]; then
-            echo "::error::Build finished, but no APK file was generated! Existing APKs were NOT touched."
-            echo "### ❌ Build Failed: No APK Generated" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
           if [ ! -s "$APK_PATH" ]; then
-            echo "::error::Generated APK is empty (0 bytes)! Existing APKs were NOT touched."
-            echo "### ❌ Build Failed: Empty APK File" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Generated APK is missing or empty!"
             exit 1
           fi
           AAPT2=$(find "$ANDROID_HOME/build-tools" -name "aapt2" | sort -V | tail -n 1)
           if [ -n "$AAPT2" ]; then
-            if ! "$AAPT2" dump badging "$APK_PATH" > /dev/null 2>&1; then
-              echo "::error::APK Parse Failed! Existing APKs were NOT replaced."
-              echo "### ❌ APK Parse Error: Corrupt Package" >> $GITHUB_STEP_SUMMARY
-              exit 1
-            fi
+            "$AAPT2" dump badging "$APK_PATH" > /dev/null
           fi
-          APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
-          echo "::notice::APK verified and parsed successfully (Size: $APK_SIZE)."
-      # Rotate builds ONLY inside TARGET_FOLDER and push all existing folders + keystore cleanly.
+
+      # Rotate builds ONLY inside TARGET_FOLDER while keeping all other folders in private repo intact.
       - name: Rotate and Push APK to Private Storage Repo
         env:
           MAIN_MAX_BUILDS: 6
@@ -106,10 +104,15 @@ jobs:
           SAFE_BRANCH=$(echo "$BRANCH_NAME" | tr '/' '_')
           TARGET_FOLDER="${REPO_NAME}_${SAFE_BRANCH}"
           HOST="github.com"
+          REPO_URL="https://x-access-token:${PAT_TOKEN}@${HOST}/${PRIVATE_REPO}.git"
+
+          git clone --depth 1 --branch "$PRIVATE_BRANCH" "$REPO_URL" private_apk_repo
           cd private_apk_repo
+
           mkdir -p "$TARGET_FOLDER"
           cd "$TARGET_FOLDER"
           OLDEST=$((MAX_BUILDS - 1))
+
           for f in Nivas_Launcher_old_*.apk; do
             [ -e "$f" ] || continue
             num=$(echo "$f" | sed -n 's/^Nivas_Launcher_old_\([0-9]\+\)_.*\.apk$/\1/p')
@@ -117,12 +120,14 @@ jobs:
               rm -f "$f"
             fi
           done
+
           for ((i=OLDEST-1; i>=1; i--)); do
             next=$((i + 1))
             for f in Nivas_Launcher_old_${i}_*.apk; do
               [ -e "$f" ] && mv "$f" "${f/Nivas_Launcher_old_${i}_/Nivas_Launcher_old_${next}_}"
             done
           done
+
           if [ "$OLDEST" -ge 1 ]; then
             for f in Nivas_Launcher_new_*.apk; do
               [ -e "$f" ] && mv "$f" "${f/Nivas_Launcher_new_/Nivas_Launcher_old_1_}"
@@ -130,6 +135,7 @@ jobs:
           else
             rm -f Nivas_Launcher_new_*.apk
           fi
+
           cp "../../app/build/outputs/apk/debug/app-debug.apk" "Nivas_Launcher_new_${DT}.apk"
           cd ..
           git checkout --orphan temp_clean_branch
@@ -138,10 +144,3 @@ jobs:
           git add -A
           git commit -m "Update ${TARGET_FOLDER}: Nivas_Launcher_new_${DT}.apk (Last ${MAX_BUILDS} builds)"
           git push -f origin temp_clean_branch:"$PRIVATE_BRANCH"
-          APK_SIZE=$(du -h "${TARGET_FOLDER}/Nivas_Launcher_new_${DT}.apk" | cut -f1)
-          echo "### ✅ APK Successfully Built & Saved to Private Repo" >> $GITHUB_STEP_SUMMARY
-          echo "- **Private Repo:** \`${PRIVATE_REPO}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Target Folder:** \`${TARGET_FOLDER}/\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **New File:** \`Nivas_Launcher_new_${DT}.apk\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **File Size:** ${APK_SIZE}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Rotation Policy:** Kept last **${MAX_BUILDS}** builds per branch (Zero history bloat)" >> $GITHUB_STEP_SUMMARY

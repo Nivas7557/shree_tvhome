@@ -77,6 +77,7 @@ class MainActivity : Activity() {
             toggleAmbientScreensaver(true)
         }
     }
+
     // Receives D-Pad simulation commands from the external TV Remote Simulator overlay app.
     private val remoteSimReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -102,6 +103,7 @@ class MainActivity : Activity() {
             }
         }
     }
+
     // Scales base font/layout metrics adaptively according to display density and screen size.
     override fun attachBaseContext(newBase: Context) {
         val config = Configuration(newBase.resources.configuration)

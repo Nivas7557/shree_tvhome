@@ -1,20 +1,23 @@
 // Important instructions:
 // - Derive monotonic versionCode and 0.X.Y versionName automatically from GitHub Actions run number.
-// - Explicitly bind debug signingConfig to ~/.android/debug.keystore so every CI build shares the exact same signature.
+// - Keep dependencies empty and enable R8 shrinking so the APK stays ~300 KB and updates cleanly in-place.
+
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
 }
+
 // Compute automatic run-based versionCode and 0.X.Y versionName (e.g., run 17 -> 0.1.7, run 42 -> 0.4.2).
 def runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
 def verMajor = runNumber.intdiv(100)
 def verMinor = (runNumber.intdiv(10)) % 10
 def verPatch = runNumber % 10
 def autoVersionName = "${verMajor}.${verMinor}.${verPatch}"
-def persistentKeystore = new File(System.getProperty("user.home"), ".android/debug.keystore")
+
 android {
     namespace 'shree.tvhome'
     compileSdk 34
+
     defaultConfig {
         applicationId "shree.tvhome"
         minSdk 21
@@ -22,14 +25,7 @@ android {
         versionCode runNumber
         versionName autoVersionName
     }
-    signingConfigs {
-        persistentDebug {
-            storeFile persistentKeystore
-            storePassword "android"
-            keyAlias "androiddebugkey"
-            keyPassword "android"
-        }
-    }
+
     buildTypes {
         debug {
             if (persistentKeystore.exists()) {
@@ -48,6 +44,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -56,5 +53,6 @@ android {
         jvmTarget = '17'
     }
 }
+
 dependencies {
 }
