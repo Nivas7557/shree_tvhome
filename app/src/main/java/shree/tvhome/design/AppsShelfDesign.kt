@@ -174,19 +174,25 @@ object AppsShelfDesign {
         hiddenApps.forEachIndexed { idx, info ->
             val pkg = info.activityInfo.packageName
             val label = AppTileDesign.getCachedLabel(pm, info)
-            val openHiddenOptions = {
-                AppMenuDialogDesign.show(
-                    ctx = ctx,
-                    pkg = pkg,
-                    appName = label,
-                    isFav = false,
-                    canMoveLeft = false,
-                    canMoveRight = false,
-                    accent = settings.accentColor,
-                    isHiddenMode = true,
-                    onHideOrUnhideApp = { onUnhideApp(pkg, label) }
-                )
-            }
+          val openHiddenOptions = {
+              AppTileDesign.showAppContextDialog(
+                  ctx = ctx,
+                  pm = pm,
+                  settings = settings,
+                  pkg = pkg,
+                  label = label,
+                  isFavRow = false,
+                  isFav = false,
+                  canMoveLeft = false,
+                  canMoveRight = false,
+                  actions = object : AppTileDesign.TileActions {
+                      override fun onToggleFavorite(pkg: String, label: String) {}
+                      override fun onMoveFavorite(pkg: String, delta: Int) {}
+                      override fun onHideApp(pkg: String, label: String) { onUnhideApp(pkg, label) }
+                  },
+                  isHiddenMode = true
+              )
+          }
             val tile = AppTileDesign.create(
                 ctx = ctx,
                 pm = pm,
