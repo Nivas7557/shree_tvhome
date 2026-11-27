@@ -323,12 +323,12 @@ object Themes {
         val hsv = FloatArray(3)
         Color.colorToHSV(sample, hsv)
         return if (isLightSurface(colors)) {
-            hsv = (hsv * 0.85f).coerceIn(0.25f, 0.85f)
-            hsv = if (secondary) 0.32f else 0.14f
+            hsv.set(1, (hsv.get(1) * 0.85f).coerceIn(0.25f, 0.85f))
+            hsv.set(2, if (secondary) 0.32f else 0.14f)
             Color.HSVToColor(if (secondary) 215 else 255, hsv)
         } else {
-            hsv = (hsv * 0.12f).coerceIn(0f, 0.14f)
-            hsv = if (secondary) 0.88f else 0.99f
+            hsv.set(1, (hsv.get(1) * 0.12f).coerceIn(0f, 0.14f))
+            hsv.set(2, if (secondary) 0.88f else 0.99f)
             Color.HSVToColor(if (secondary) 205 else 255, hsv)
         }
     }
