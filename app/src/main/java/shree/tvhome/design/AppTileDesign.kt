@@ -66,10 +66,15 @@ object AppTileDesign {
                     val px = sampleBmp.getPixel(x, y)
                     if (Color.alpha(px) < 160) continue
                     Color.colorToHSV(px, hsv)
-                    val sat = hsv
-                    val valBrightness = hsv
+                    val sat = hsv.get(1)
+                    val valBrightness = hsv.get(2)
                     if (valBrightness < 0.22f) continue
                     val score = (sat * 2.2f) + (valBrightness * 0.8f)
+                    if (score > bestScore) {
+                        bestScore = score
+                        bestColor = px
+                    }
+
                     if (score > bestScore) {
                         bestScore = score
                         bestColor = px
