@@ -111,6 +111,10 @@ class AppSettings(context: Context) {
             ?: Themes.TILE_SHAPES.first().key
         set(value) = prefs.edit().putString(PREF_TILE_SHAPE, value).apply()
 
+    var iconBadge: String
+        get() = prefs.getString("tile_icon_badge", "") ?: ""
+        set(value) = prefs.edit().putString("tile_icon_badge", value).apply()
+
     // Selected glass palette key; notifies style listeners automatically on change.
     var tileColor: String
         get() = prefs.getString(PREF_TILE_COLOR, Themes.THEMES.first().key) ?: Themes.THEMES.first().key
