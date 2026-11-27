@@ -175,9 +175,9 @@ object QuickControlsPanel {
                 val next = !settings.eyeComfortEnabled
                 settings.eyeComfortEnabled = next
                 PictureAudioPanel.applyWarmTintOverlay(ctx, if (next) 35 else 0)
-                onRefreshPanel()
+                onNavigate(PanelHub.MODE_QUICK)
             },
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = LayoutMetrics.dynamicSpace(ctx, 0.008f, 5, 10, false) }
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV }
         )
 
         val currentSleepLabel = sleepOptions.find { it.first == settings.sleepTimerMins }?.second ?: "Off"
@@ -192,16 +192,15 @@ object QuickControlsPanel {
                 val curIdx = sleepOptions.indexOfFirst { it.first == settings.sleepTimerMins }.coerceAtLeast(0)
                 val nextSpec = sleepOptions[(curIdx + 1) % sleepOptions.size]
                 settings.sleepTimerMins = nextSpec.first
-                android.widget.Toast.makeText(
+                Toast.makeText(
                     ctx,
                     if (nextSpec.first == 0) "Sleep timer off" else "Sleep timer set to ${nextSpec.second}",
-                    android.widget.Toast.LENGTH_SHORT
+                    Toast.LENGTH_SHORT
                 ).show()
-                onRefreshPanel()
+                onNavigate(PanelHub.MODE_QUICK)
             },
-            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = LayoutMetrics.dynamicSpace(ctx, 0.008f, 5, 10, false) }
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gapV }
         )
-
         // Ambient screensaver and lightweight memory optimization triggers.
         panel.addView(
             PanelSurfaceKit.makeActionRow(
