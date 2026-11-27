@@ -1,5 +1,5 @@
 // Important instructions:
-// - Act as the single source of truth for palettes, rich gradient accents, tile options, clock styles, weather specs, and layout ratios.
+// - Act as the single source of truth for palettes, rich gradient accents, tile options, 6 clock styles, weather specs, and layout ratios.
 // - Keep accent gradients natural with multi-stop color blends rather than flat single colors.
 package shree.tvhome.core
 
@@ -50,6 +50,8 @@ object Themes {
         val dashedOuterRing: Boolean = false,
         val showDigitalReadout: Boolean = false,
         val showHands: Boolean = true,
+        val showCoronaHalo: Boolean = false,
+        val showActivityRings: Boolean = false,
         val outerRingRatio: Float = 0.88f,
         val innerRingRatio: Float = 0.62f,
         val handScaleRatio: Float = 1.0f,
@@ -193,7 +195,7 @@ object Themes {
         "rounded" -> 14f
         else -> 24f
     }
-    // Single source of truth for clock widget styles; edit here to sync everywhere.
+    // Single source of truth for all 6 clock widget styles; edit here to sync everywhere automatically.
     val CLOCK_STYLES = listOf(
         ClockStyleSpec(
             key = "classic",
@@ -202,9 +204,6 @@ object Themes {
             showBezelRing = true,
             showTicks = true,
             showNumerals = true,
-            showProgressArcs = false,
-            dashedOuterRing = false,
-            showDigitalReadout = false,
             showHands = true,
             outerRingRatio = 0.88f,
             innerRingRatio = 0.67f,
@@ -214,27 +213,38 @@ object Themes {
             key = "chrono",
             label = "Chrono",
             showDialFace = true,
-            showBezelRing = false,
-            showTicks = false,
-            showNumerals = false,
             showProgressArcs = true,
-            dashedOuterRing = false,
-            showDigitalReadout = false,
             showHands = true,
             outerRingRatio = 0.90f,
             innerRingRatio = 0.74f,
             handScaleRatio = 0.92f
         ),
         ClockStyleSpec(
+            key = "eclipse",
+            label = "Eclipse",
+            showDialFace = true,
+            showCoronaHalo = true,
+            showTicks = true,
+            showHands = true,
+            outerRingRatio = 0.86f,
+            innerRingRatio = 0.64f,
+            handScaleRatio = 0.95f
+        ),
+        ClockStyleSpec(
+            key = "matrix",
+            label = "Pulse Rings",
+            showDialFace = true,
+            showActivityRings = true,
+            showDigitalReadout = true,
+            showHands = false,
+            outerRingRatio = 0.90f,
+            innerRingRatio = 0.72f
+        ),
+        ClockStyleSpec(
             key = "minimal",
             label = "Orbit",
             showDialFace = false,
-            showBezelRing = false,
-            showTicks = false,
-            showNumerals = false,
-            showProgressArcs = false,
             dashedOuterRing = true,
-            showDigitalReadout = false,
             showHands = true,
             outerRingRatio = 0.88f,
             innerRingRatio = 0.62f,
@@ -245,10 +255,6 @@ object Themes {
             label = "Digital",
             showDialFace = true,
             showBezelRing = true,
-            showTicks = false,
-            showNumerals = false,
-            showProgressArcs = false,
-            dashedOuterRing = false,
             showDigitalReadout = true,
             showHands = false,
             cornerRadiusRatio = 0.35f
@@ -271,8 +277,8 @@ object Themes {
     val PANEL_WIDTH_OPTIONS = listOf(20, 25, 30, 35)
     const val PANEL_MIN_WIDTH_DP = 165
     val GRID_COL_RANGE = 2..10
-    val CONVEYOR_NEIGHBOR_SCALE_RANGE = 0.62f..0.82f
-    const val CONVEYOR_NEIGHBOR_ALPHA = 0.46f
+    val CONVEYOR_NEIGHBOR_SCALE_RANGE = 0.64f..0.82f
+    const val CONVEYOR_NEIGHBOR_ALPHA = 0.48f
     const val CONVEYOR_SIDE_MIN_HEIGHT_RATIO = 0.52f
     private val themeMap by lazy { THEMES.associateBy { it.key } }
     private val sizeMap by lazy { TILE_SIZES.associateBy { it.key } }
@@ -311,17 +317,18 @@ object Themes {
         return sum / colors.size
     }
     fun isLightSurface(colors: IntArray): Boolean = computeAverageLuminance(colors) > 0.45f
+    // Computes high-contrast text color dynamically based on surface luminance.
     fun getAdaptiveTextColor(colors: IntArray, secondary: Boolean = false): Int {
         val sample = colors.firstOrNull() ?: return Color.WHITE
         val hsv = FloatArray(3)
         Color.colorToHSV(sample, hsv)
         return if (isLightSurface(colors)) {
-            hsv[1] = (hsv[1] * 0.85f).coerceIn(0.25f, 0.85f)
-            hsv[2] = if (secondary) 0.32f else 0.14f
+            hsv = (hsv * 0.85f).coerceIn(0.25f, 0.85f)
+            hsv = if (secondary) 0.32f else 0.14f
             Color.HSVToColor(if (secondary) 215 else 255, hsv)
         } else {
-            hsv[1] = (hsv[1] * 0.12f).coerceIn(0f, 0.14f)
-            hsv[2] = if (secondary) 0.88f else 0.99f
+            hsv = (hsv * 0.12f).coerceIn(0f, 0.14f)
+            hsv = if (secondary) 0.88f else 0.99f
             Color.HSVToColor(if (secondary) 205 else 255, hsv)
         }
     }
