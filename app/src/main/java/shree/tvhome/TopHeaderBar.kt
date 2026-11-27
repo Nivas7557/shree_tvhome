@@ -545,7 +545,7 @@ class TopHeaderBar(
         }, 4200L)
     }
 
-    // Computes personalized greeting phrase and typography from Greeting Studio settings (without any Smart TV tag).
+    // Updates greetingCard with Greeting Studio phrase & font settings (preserving original circular avatar & cutout).
     fun refreshGreeting() {
         val name = settings.userName.ifBlank { "Shree" }
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
@@ -556,20 +556,14 @@ class TopHeaderBar(
             else -> "Good Night" to "🌙"
         }
 
-        val fullPhrase = when (settings.greetingStyle) {
-            "minimal" -> "$celestialEmoji  $name"
-            "welcome" -> "$celestialEmoji  Welcome Back, $name"
-            "custom" -> {
-                val prefix = settings.greetingPhrase.ifBlank { "Hello" }
-                "$celestialEmoji  $prefix, $name"
-            }
-            else -> "$celestialEmoji  $timeGreeting, $name"
+        val effectiveGreeting = when (settings.greetingStyle) {
+            "minimal" -> celestialEmoji
+            "welcome" -> "$celestialEmoji Welcome Back"
+            "custom" -> "$celestialEmoji ${settings.greetingPhrase.ifBlank { "Hello" }}"
+            else -> "$celestialEmoji $timeGreeting"
         }
 
-        val fontSpec = shree.tvhome.core.Themes.GREETING_FONTS.find { it.key == settings.greetingFont }
-            ?: shree.tvhome.core.Themes.GREETING_FONTS.first()
-        greetingTv.typeface = android.graphics.Typeface.create(fontSpec.family, android.graphics.Typeface.BOLD)
-        greetingTv.text = fullPhrase
+        greetingCard.updateProfile(name, effectiveGreeting)
     }
 
     override fun onAttachedToWindow() {
