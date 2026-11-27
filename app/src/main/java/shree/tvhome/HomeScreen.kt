@@ -283,7 +283,7 @@ class HomeScreen(
             clipToPadding = false
         }
         embeddedShelfWell.addView(appGrid, LayoutParams(-1, 0, 1f))
-        bodyContainer.addView(recessedShelfWell, LayoutParams(-1, 0, 1f))
+        bodyContainer.addView(embeddedShelfWell, LayoutParams(-1, 0, 1f))
     }
     fun setRightStageInset(rightStageWidthPx: Int) {
         val gap = LayoutMetrics.dynamicSpace(context, ratio = 0.018f, minDp = 12, maxDp = 30, horizontal = true)
