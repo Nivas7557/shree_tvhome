@@ -399,69 +399,165 @@ object StyleCustomizePanel {
         setOnClickListener { v -> onClick(v) }
         addView(titleTv); addView(subTv)
     }
+    // Opens the Greeting & Typography Studio dialog with live preview, 4 phrase modes, and 3 font families.
     private fun showGreetingDialog(ctx: Context, settings: AppSettings, onLiveRefresh: () -> Unit, onRefreshPanel: () -> Unit) {
         val dialog = Dialog(ctx).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
         val padH = LayoutMetrics.dynamicSpace(ctx, 0.022f, 16, 28, true)
-        val padV = LayoutMetrics.dynamicSpace(ctx, 0.024f, 14, 24, false)
+        val padV = LayoutMetrics.dynamicSpace(ctx, 0.020f, 14, 22, false)
+        val gap = LayoutMetrics.dynamicSpace(ctx, 0.010f, 6, 12, false)
+
+        var selectedStyle = settings.greetingStyle
+        var selectedFont = settings.greetingFont
+
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(padH, padV, padH, padV)
             background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.rgb(20, 32, 62), Color.rgb(12, 18, 38))
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.rgb(20, 28, 52), Color.rgb(12, 16, 32))
             ).apply {
-                cornerRadius = LayoutMetrics.dpF(ctx, 20f)
+                cornerRadius = LayoutMetrics.dpF(ctx, 24f)
                 setStroke(LayoutMetrics.dp(ctx, 1), Color.argb(120, 255, 255, 255))
             }
         }
+
         box.addView(TextView(ctx).apply {
-            text = "Custom Greeting Phrase"
+            text = "Greeting & Font Studio"
             textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
-            setPadding(0, 0, 0, padV / 2)
+            setPadding(0, 0, 0, gap)
         })
+
+        // Live Greeting Preview Pill
+        val previewTv = TextView(ctx).apply {
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setPadding(padH, padV / 2, padH, padV / 2)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.argb(55, 255, 255, 255), Color.argb(30, 20, 27, 45))
+            ).apply {
+                cornerRadius = LayoutMetrics.dpF(ctx, 999f)
+                setStroke(LayoutMetrics.dp(ctx, 1), settings.accentColor)
+            }
+        }
+        box.addView(previewTv, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gap })
+
         val input = EditText(ctx).apply {
             isSingleLine = true
-            hint = "Custom phrase"
+            hint = "Custom prefix (e.g. Namaste, Welcome)"
             setText(settings.greetingPhrase)
             setTextColor(Color.WHITE)
-            setHintTextColor(Color.argb(150, 200, 220, 245))
+            setHintTextColor(Color.argb(140, 200, 220, 245))
             setPadding(padH / 2, padV / 2, padH / 2, padV / 2)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
             background = GradientDrawable().apply {
-                setColor(Color.argb(55, 255, 255, 255))
+                setColor(Color.argb(45, 255, 255, 255))
                 cornerRadius = LayoutMetrics.dpF(ctx, 12f)
                 setStroke(LayoutMetrics.dp(ctx, 1), settings.accentColor)
             }
         }
-        box.addView(input, LinearLayout.LayoutParams(LayoutMetrics.dynamicSpace(ctx, 0.32f, 240, 420, true), -2))
+
+        val updateLivePreview = {
+            val name = settings.userName.ifBlank { "Shree" }
+            val textOut = when (selectedStyle) {
+                "minimal" -> "☀️  $name"
+                "welcome" -> "✨  Welcome Back, $name"
+                "custom" -> "🌙  ${input.text.toString().trim().ifBlank { "Hello" }}, $name"
+                else -> "☀️  Good Morning, $name"
+            }
+            val fSpec = Themes.GREETING_FONTS.find { it.key == selectedFont } ?: Themes.GREETING_FONTS.first()
+            previewTv.typeface = Typeface.create(fSpec.family, Typeface.BOLD)
+            previewTv.text = textOut
+            input.visibility = if (selectedStyle == "custom") View.VISIBLE else View.GONE
+        }
+
+        // 1. Greeting Phrase Style Chips
+        val styleRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        val styleViews = ArrayList<TextView>()
+        Themes.GREETING_STYLES.forEachIndexed { idx, spec ->
+            val chip = TextView(ctx).apply {
+                text = spec.label
+                textSize = 9.5f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                isFocusable = true; isClickable = true
+                setPadding(dp(ctx, 6), dp(ctx, 8), dp(ctx, 6), dp(ctx, 8))
+                setOnClickListener {
+                    selectedStyle = spec.key
+                    styleViews.forEachIndexed { i, v ->
+                        val active = Themes.GREETING_STYLES[i].key == selectedStyle
+                        v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, active, settings.tileColor)
+                        v.setTextColor(Color.WHITE)
+                    }
+                    updateLivePreview()
+                }
+                setOnFocusChangeListener { v, f ->
+                    AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 4f)
+                }
+            }
+            chip.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, spec.key == selectedStyle, settings.tileColor)
+            chip.setTextColor(Color.WHITE)
+            styleViews.add(chip)
+            styleRow.addView(chip, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                if (idx < Themes.GREETING_STYLES.lastIndex) rightMargin = gap / 2
+            })
+        }
+        box.addView(styleRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gap })
+
+        // 2. Greeting Font Family Chips
+        val fontRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        val fontViews = ArrayList<TextView>()
+        Themes.GREETING_FONTS.forEachIndexed { idx, fSpec ->
+            val chip = TextView(ctx).apply {
+                text = fSpec.label
+                textSize = 10f
+                typeface = Typeface.create(fSpec.family, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                isFocusable = true; isClickable = true
+                setPadding(dp(ctx, 6), dp(ctx, 8), dp(ctx, 6), dp(ctx, 8))
+                setOnClickListener {
+                    selectedFont = fSpec.key
+                    fontViews.forEachIndexed { i, v ->
+                        val active = Themes.GREETING_FONTS[i].key == selectedFont
+                        v.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, active, settings.tileColor)
+                    }
+                    updateLivePreview()
+                }
+                setOnFocusChangeListener { v, f ->
+                    AnimationController.animateFocus(v, f, settings.motionStyle, 1.04f, 4f)
+                }
+            }
+            chip.background = PanelSurfaceKit.glassCardBg(ctx, settings.accentColor, fSpec.key == selectedFont, settings.tileColor)
+            chip.setTextColor(Color.WHITE)
+            fontViews.add(chip)
+            fontRow.addView(chip, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                if (idx < Themes.GREETING_FONTS.lastIndex) rightMargin = gap / 2
+            })
+        }
+        box.addView(fontRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gap })
+        box.addView(input, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = gap })
+        updateLivePreview()
+
         val btnH = LayoutMetrics.dynamicSpace(ctx, 0.056f, 36, 48, false)
         val btnRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        btnRow.addView(
-            makeDialogBtn(ctx, settings, "↺ Auto", false) {
-                settings.greetingPhrase = ""
-                onLiveRefresh()
-                onRefreshPanel()
-                dialog.dismiss()
-            },
-            LinearLayout.LayoutParams(0, btnH, 1f).apply { rightMargin = padH / 3 }
-        )
-        btnRow.addView(
-            makeDialogBtn(ctx, settings, "✓ Save", true) {
-                settings.greetingPhrase = input.text.toString().trim()
-                onLiveRefresh()
-                onRefreshPanel()
-                dialog.dismiss()
-            },
-            LinearLayout.LayoutParams(0, btnH, 1f)
-        )
-        box.addView(btnRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = padV / 2 })
-        dialog.setContentView(box)
+        btnRow.addView(makeDialogBtn(ctx, settings, "Cancel", false) { dialog.dismiss() }, LinearLayout.LayoutParams(0, btnH, 1f).apply { rightMargin = gap })
+        btnRow.addView(makeDialogBtn(ctx, settings, "✓ Apply", true) {
+            settings.greetingStyle = selectedStyle
+            settings.greetingFont = selectedFont
+            settings.greetingPhrase = input.text.toString().trim()
+            onLiveRefresh()
+            onRefreshPanel()
+            dialog.dismiss()
+        }, LinearLayout.LayoutParams(0, btnH, 1f))
+        box.addView(btnRow, LinearLayout.LayoutParams(-1, -2))
+
+        dialog.setContentView(box, LinearLayout.LayoutParams(LayoutMetrics.dynamicSpace(ctx, 0.36f, 280, 440, true), -2))
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
             clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
-            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         }
         dialog.show()
     }
