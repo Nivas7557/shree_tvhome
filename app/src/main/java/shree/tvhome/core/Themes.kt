@@ -152,12 +152,28 @@ object Themes {
         TileSizeSpec("large", "Large", badgeDp = 94, desiredGridDp = 124, hiddenScale = 0.96f)
     )
 
-    val TILE_SHAPES = listOf(
-        OptionSpec("squircle", "◐ Squircle"),
-        OptionSpec("circle", "● Circle"),
-        OptionSpec("heart", "♥ Heart"),
-        OptionSpec("classic", "■ Classic")
+    data class GreetingStyleSpec(val key: String, val label: String, val desc: String)
+    val GREETING_STYLES = listOf(
+        GreetingStyleSpec("timeOfDay", "Time of Day", "Good Morning / Evening"),
+        GreetingStyleSpec("welcome", "Welcome Back", "Welcome Back, Name"),
+        GreetingStyleSpec("minimal", "Minimal", "Profile Name Only"),
+        GreetingStyleSpec("custom", "Custom Phrase", "Personalized Prefix")
     )
+
+    data class GreetingFontSpec(val key: String, val label: String, val family: String)
+    val GREETING_FONTS = listOf(
+        GreetingFontSpec("jakarta", "Jakarta", "sans-serif-medium"),
+        GreetingFontSpec("outfit", "Outfit", "sans-serif-light"),
+        GreetingFontSpec("mono", "Cyber Mono", "monospace")
+    )
+
+    val TILE_SHAPES = listOf(
+        TileShapeSpec("squircle", "Squircle", 24f),
+        TileShapeSpec("circle", "Circle", 999f),
+        TileShapeSpec("heart", "Heart", 28f),
+        TileShapeSpec("rounded", "Classic", 14f)
+    )
+
 
     // Single source of truth for clock widget styles; add/remove/edit entries here to sync everywhere.
     val CLOCK_STYLES = listOf(
